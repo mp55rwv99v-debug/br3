@@ -137,14 +137,23 @@
       <input id="s_ekey" type="password" autocomplete="off">
       <label for="s_evoice">ElevenLabs Voice-ID</label>
       <input id="s_evoice" type="text" placeholder="z. B. aus ‚Voice Design‘ selbst entworfen">
-      <label for="s_robot">Roboter-Filter <span id="v_robot"></span></label>
-      <input id="s_robot" type="range" min="0" max="1" step="0.05">
     </div>
-    <label for="s_glitch">Glitches &amp; Piepsen <span id="v_glitch"></span></label>
+    <label for="s_robot">Roboter-Filter <span id="v_robot"></span></label>
+    <input id="s_robot" type="range" min="0" max="1" step="0.05">
+    <label for="s_glitch">Glitches &amp; Cracks in der Stimme <span id="v_glitch"></span></label>
     <input id="s_glitch" type="range" min="0" max="1" step="0.05">
-    <p class="hint">Stottern, Bitcrush-Aussetzer, Tonhöhen-Sprünge und kurze Ausrutscher in Droiden-Piepsprache. Am stärksten mit ElevenLabs (die iPhone-Stimme kann nur stottern und piepsen).</p>
+    <p class="hint">Roboter-Filter und gedehnte Glitches wirken nur mit ElevenLabs. Die iPhone-Stimme kann nur stottern.</p>
+    <div class="actions"><button class="btn ghost" id="testVoice">Stimme testen</button></div>
+
+    <h3>Piepsen</h3>
+    <label for="s_beepvol">Lautstärke <span id="v_beepvol"></span></label>
+    <input id="s_beepvol" type="range" min="0" max="1" step="0.05">
+    <label for="s_beepfreq">Wie oft er piepst <span id="v_beepfreq"></span></label>
+    <input id="s_beepfreq" type="range" min="0" max="1" step="0.05">
+    <label for="s_beepglitch">Glitches im Piepsen <span id="v_beepglitch"></span></label>
+    <input id="s_beepglitch" type="range" min="0" max="1" step="0.05">
     <div class="row"><label for="s_thinkbeep">Beim Nachdenken piepsen</label><input id="s_thinkbeep" type="checkbox"></div>
-    <div class="actions"><button class="btn ghost" id="testVoice">Stimme testen</button><button class="btn ghost" id="testBeep">Piepsen testen</button></div>
+    <div class="actions"><button class="btn ghost" id="testBeep">Piepsen testen</button></div>
 
     <h3>Zuhören</h3>
     <div class="row"><label for="s_conv">Gesprächsmodus (nach jeder Antwort weiter zuhören)</label><input id="s_conv" type="checkbox"></div>
@@ -215,7 +224,7 @@ const DEFAULTS = {
   tts: "system", voice: "", pitch: 1.15, rate: 1.05,
   ekey: "", evoice: "", robot: 0.55,
   conv: true, wake: false, color: "#4fc3ff",
-  glitch: 0.5, thinkbeep: true, mouth: "wave", jokes: true, jokemin: 10, computers: "", weather: true,
+  glitch: 0.5, thinkbeep: true, beepvol: 0.8, beepfreq: 0.5, beepglitch: 0.5, mouth: "wave", jokes: true, jokemin: 10, computers: "", weather: true,
 };
 const LS_KEY = "droid.settings.v1", LS_HIST = "droid.history.v1";
 function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
@@ -1016,12 +1025,14 @@ function synthBeeps(sr, mood = "think", groups) {
 }
 // Faint vocoder damage behind the beeps: a smeared, crushed shadow copy plus occasional stutters
 function droidGlitch(a, sr) {
+  const amt = +S.beepglitch;
+  if (!(amt > 0)) return a;
   const o = Float32Array.from(a);
   // smeared shadow (slow, mushy), very quiet
   const shadow = smear(a, sr, 1.6);
-  for (let i = 0; i < o.length && i < shadow.length; i++) o[i] += shadow[i] * 0.16;
+  for (let i = 0; i < o.length && i < shadow.length; i++) o[i] += shadow[i] * 0.32 * amt;
   // short stutters / crush blips at random spots
-  const events = 1 + Math.floor(Math.random() * 3);
+  const events = Math.round(amt * (1 + Math.random() * 4));
   for (let e = 0; e < events; e++) {
     const p = Math.floor(Math.random() * Math.max(1, o.length - sr * 0.08)), len = Math.floor(sr * (0.02 + Math.random() * 0.03));
     if (Math.random() < 0.5) { for (let k = 1; k <= 2; k++) for (let i = 0; i < len && p + k * len + i < o.length; i++) o[p + k * len + i] = o[p + k * len + i] * 0.4 + o[p + i] * 0.6; }
@@ -1113,7 +1124,8 @@ function playBeeps(mood, signal) {
   b.getChannelData(0).set(data);
   return new Promise(resolve => {
     const src = actx.createBufferSource(); src.buffer = b;
-    src.connect(analyser); startMeter();
+    const vol = actx.createGain(); vol.gain.value = +S.beepvol;
+    src.connect(vol); vol.connect(analyser); startMeter();
     src.onended = () => { stopMeter(); resolve(); };
     if (signal) signal.addEventListener("abort", () => { try { src.stop(); } catch {} }, { once: true });
     src.start();
@@ -1154,7 +1166,8 @@ function playStinger(kind, signal) {
   const b = actx.createBuffer(1, data.length, actx.sampleRate); b.getChannelData(0).set(data);
   return new Promise(resolve => {
     const src = actx.createBufferSource(); src.buffer = b;
-    src.connect(analyser); startMeter();
+    const vol = actx.createGain(); vol.gain.value = Math.max(0.3, +S.beepvol);
+    src.connect(vol); vol.connect(analyser); startMeter();
     src.onended = () => { stopMeter(); resolve(); };
     if (signal) signal.addEventListener("abort", () => { try { src.stop(); } catch {} }, { once: true });
     src.start();
@@ -1165,12 +1178,12 @@ function playStinger(kind, signal) {
 let thinkTimer = 0, thinkCtrl = null;
 function startThinkingBeeps() {
   stopThinkingBeeps();
-  if (!S.thinkbeep || !actx) return;
+  if (!S.thinkbeep || !actx || !(+S.beepfreq > 0)) return;
   const c = thinkCtrl = new AbortController();
   const loop = delay => { thinkTimer = setTimeout(async () => {
     if (c.signal.aborted) return;
     await playBeeps(Math.random() < 0.2 ? "worried" : "think", c.signal);
-    loop(1400 + Math.random() * 2200);
+    loop((1400 + Math.random() * 2200) / (0.3 + +S.beepfreq * 1.4));
   }, delay); };
   loop(250);
 }
@@ -1205,7 +1218,7 @@ class Speaker {
       else if (tag && /^gag:\s*\w+$/i.test(tag[1])) this.queue.push({ gag: tag[1].split(":")[1].trim().toLowerCase() });
       else if (!tag) this.pushText(part);
     });
-    if (Math.random() < +S.glitch * 0.12) this.queue.push({ beep: "think" }); // random slip
+    if (Math.random() < +S.beepfreq * 0.25) this.queue.push({ beep: "think" }); // random slip
     if (!this.running) this.run();
   }
   pushText(sentence) {
@@ -1348,7 +1361,7 @@ function systemPrompt() {
   const when = now.toLocaleString(S.lang, { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const de = S.lang.startsWith("de");
   let p = S.persona.replaceAll("{name}", S.name);
-  if (+S.glitch > 0) p += de
+  if (+S.beepfreq > 0) p += de
     ? `\n\nDu hast einen kleinen Defekt im Sprachmodul: Wenn du aufgeregt, überfordert oder tief in Gedanken bist, rutschst du kurz in deine Piep-Sprache. Schreibe dann genau [piep] an die Stelle. Nicht in jeder Antwort, höchstens einmal pro Antwort. Danach entschuldigst du dich manchmal knapp für die Fehlfunktion.`
     : `\n\nYour speech module is slightly faulty: when excited, flustered or deep in thought you briefly slip into beeping droid language. Write exactly [piep] at that spot. Not in every reply, at most once per reply. Afterwards you sometimes briefly apologise for the malfunction.`;
   p += `\n\nDeine Augen können Gefühle zeigen. Setze dafür ab und zu eins dieser Zeichen an den Anfang eines Satzes: [froh] [verlegen] [ueberrascht] [traurig] [besorgt] [genervt] [verliebt]. Sparsam und passend, höchstens zwei pro Antwort.
@@ -1547,9 +1560,13 @@ function buildWakeRe() {
   return new RegExp(`(?:^|[^\\p{L}\\d])(?:${words.join("|")})(?![\\p{L}\\d])[,!.:]*\\s*`, "iu");
 }
 
-function startListening() {
+// iOS only lets speech recognition start from a tap. Automatic restarts (conversation mode,
+// wake word) are tried once; if iOS refuses them, BR3 quietly falls back to tap-to-talk.
+let autoBlocked = false;
+function startListening(fromTap = false) {
   if (!SR) { setStatus("Keine Spracherkennung – bitte tippen ⌨︎"); return; }
   if (listening) return;
+  if (!fromTap && autoBlocked) { setStatus("Zum Sprechen aufs Gesicht tippen"); return; }
   rec = new SR();
   rec.lang = S.lang; rec.interimResults = true; rec.maxAlternatives = 1;
   rec.continuous = !!S.wake;
@@ -1578,7 +1595,13 @@ function startListening() {
     }
   };
   rec.onerror = (e) => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") { wantListen = false; flashError("Mikrofon/Spracherkennung nicht erlaubt. In den iOS-Einstellungen für Safari freigeben."); }
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      wantListen = false;
+      if (!fromTap) { autoBlocked = true; setMood("idle"); setStatus("Zum Sprechen aufs Gesicht tippen"); return; }
+      flashError(e.error === "service-not-allowed"
+        ? "iOS blockiert die Spracherkennung. Prüfe: Einstellungen → Siri (einschalten) und Allgemein → Tastatur → Diktierfunktion. Öffne BR3 notfalls direkt in Safari statt vom Home-Bildschirm."
+        : "Mikrofon blockiert. In Safari auf „aA“ → Website-Einstellungen → Mikrofon → Erlauben, dann neu laden.");
+    }
     else if (e.error !== "no-speech" && e.error !== "aborted") console.warn("SR error", e.error);
   };
   rec.onend = () => {
@@ -1588,7 +1611,7 @@ function startListening() {
       if (t) askClaude(t);
       else if (!busy) { setMood("idle"); if (!gotSomething) setStatus("Bereit – aufs Gesicht tippen"); }
     } else if (wantListen && !busy) {
-      setTimeout(startListening, 250); // keep the wake-word loop alive
+      setTimeout(() => startListening(false), 250); // keep the wake-word loop alive
     }
   };
   wantListen = true;
@@ -1614,13 +1637,13 @@ cv.addEventListener("click", () => {
     const hello = S.lang.startsWith("de") ? `${S.name} zu Diensten, Sir.` : `${S.name}, at your service, Sir.`;
     setCaption("", hello); beHappy(2200);
     sp.push(hello);
-    sp.whenIdle().then(() => { if (currentSpeaker === sp) { setMood("idle"); if (S.wake || S.conv) startListening(); } });
+    sp.whenIdle().then(() => { if (currentSpeaker === sp) { setMood("idle"); setStatus("Zum Sprechen aufs Gesicht tippen"); if (S.wake || S.conv) startListening(false); } });
     return;
   }
   if (mood === "speaking" || mood === "thinking") { interrupt(); return; }
   if (listening) { if (!S.wake) { try { rec.stop(); } catch {} } return; }
-  if (S.wake) { startListening(); setMood("listening"); return; }
-  startListening();
+  if (S.wake) { startListening(true); setMood("listening"); return; }
+  startListening(true);
 });
 
 $("kbd").addEventListener("click", () => { $("typebar").classList.toggle("open"); if ($("typebar").classList.contains("open")) $("typed").focus(); });
@@ -1634,7 +1657,7 @@ $("sendTyped").addEventListener("click", sendTyped);
 $("typed").addEventListener("keydown", e => { if (e.key === "Enter") sendTyped(); });
 
 // ---------- Settings panel ----------
-const fields = ["name", "wakewords", "lang", "persona", "key", "model", "tts", "voice", "pitch", "rate", "ekey", "evoice", "robot", "conv", "wake", "color", "glitch", "thinkbeep", "mouth", "jokes", "jokemin", "computers", "weather"];
+const fields = ["name", "wakewords", "lang", "persona", "key", "model", "tts", "voice", "pitch", "rate", "ekey", "evoice", "robot", "conv", "wake", "color", "glitch", "thinkbeep", "beepvol", "beepfreq", "beepglitch", "mouth", "jokes", "jokemin", "computers", "weather"];
 function syncVisibility() {
   $("sysVoiceBox").style.display = $("s_tts").value === "system" ? "" : "none";
   $("elevenBox").style.display = $("s_tts").value === "eleven" ? "" : "none";
@@ -1642,6 +1665,7 @@ function syncVisibility() {
   $("v_rate").textContent = (+$("s_rate").value).toFixed(2);
   $("v_robot").textContent = Math.round($("s_robot").value * 100) + " %";
   $("v_glitch").textContent = Math.round($("s_glitch").value * 100) + " %";
+  for (const k of ["beepvol", "beepfreq", "beepglitch"]) $("v_" + k).textContent = Math.round($("s_" + k).value * 100) + " %";
 }
 function openSettings() {
   stopListening(); interrupt();
@@ -1673,7 +1697,7 @@ $("testComputers").addEventListener("click", async () => {
   out.textContent = lines.join("  ·  "); S = saved;
 });
 $("testBeep").addEventListener("click", () => { ensureAudio(); playBeeps(["think", "worried", "happy"][Math.floor(Math.random() * 3)]); });
-["s_tts", "s_pitch", "s_rate", "s_robot", "s_glitch"].forEach(id => $(id).addEventListener("input", syncVisibility));
+["s_tts", "s_pitch", "s_rate", "s_robot", "s_glitch", "s_beepvol", "s_beepfreq", "s_beepglitch"].forEach(id => $(id).addEventListener("input", syncVisibility));
 $("saveSettings").addEventListener("click", () => {
   S = Object.assign(S, readSettings()); lsSet(LS_KEY, JSON.stringify(S));
   $("settings").classList.remove("open"); setMood("idle"); setStatus("Gespeichert");
