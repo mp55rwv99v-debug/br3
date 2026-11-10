@@ -1,0 +1,1779 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Droid">
+<meta name="theme-color" content="#000000">
+<title>Droid Assistent</title>
+<style>
+  :root {
+    --bg: #000;
+    --fg: #f3e6c8;
+    --dim: #8a7d63;
+    --accent: #f5b942;
+    --panel: #15120c;
+    --line: #3a3224;
+    --danger: #ff5a4f;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
+  #face { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  #caption {
+    position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 18px);
+    text-align: center; font-size: clamp(14px, 2.6vw, 20px); color: var(--fg); opacity: .85;
+    pointer-events: none; text-shadow: 0 0 12px #000; max-height: 30vh; overflow: hidden;
+  }
+  #caption .you { color: var(--dim); display: block; font-size: .85em; margin-bottom: 4px; }
+  #status {
+    position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 14px; white-space: nowrap; font-size: 10px !important;
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+    pointer-events: none;
+  }
+  .corner-btn {
+    position: fixed; top: calc(env(safe-area-inset-top) + 6px); width: 44px; height: 44px;
+    border: 0; background: transparent; color: var(--dim); font-size: 22px; opacity: .45;
+  }
+  #gear { right: 8px; }
+  #kbd { right: 54px; }
+  .corner-btn:active { opacity: 1; }
+  #typebar {
+    position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 56px);
+    display: none; gap: 8px;
+  }
+  #typebar.open { display: flex; }
+  #typebar input { flex: 1; font-size: 17px; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+  #typebar button, .btn { font-size: 16px; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--accent); color: #1a1408; font-weight: 600; }
+  .btn.ghost { background: transparent; color: var(--fg); }
+
+  #settings {
+    position: fixed; inset: 0; background: rgba(0,0,0,.92); display: none; overflow-y: auto;
+    -webkit-overflow-scrolling: touch; padding: calc(env(safe-area-inset-top) + 16px) 16px 40px;
+    -webkit-user-select: text; user-select: text;
+  }
+  #settings.open { display: block; }
+  #settings .wrap { max-width: 560px; margin: 0 auto; }
+  #settings h2 { margin: 0 0 4px; color: var(--accent); font-size: 22px; }
+  #settings h3 { margin: 24px 0 8px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  #settings label { display: block; margin: 10px 0 4px; font-size: 14px; }
+  #settings input[type=text], #settings input[type=password], #settings select, #settings textarea {
+    width: 100%; font-size: 16px; padding: 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  }
+  #settings textarea { min-height: 140px; font-size: 14px; }
+  #settings input[type=range] { width: 100%; }
+  #settings .row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+  #settings .row label { margin: 0; flex: 1; }
+  #settings .hint { font-size: 12px; color: var(--dim); margin: 4px 0 0; }
+  #settings .actions { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<canvas id="face"></canvas>
+<div id="status">Tippen zum Starten</div>
+<div id="caption"></div>
+<button class="corner-btn" id="kbd" aria-label="Tippen statt sprechen">⌨︎</button>
+<button class="corner-btn" id="gear" aria-label="Einstellungen">⚙︎</button>
+<div id="typebar">
+  <input id="typed" type="text" placeholder="Nachricht eintippen…" autocomplete="off">
+  <button id="sendTyped">Senden</button>
+</div>
+
+<div id="settings">
+  <div class="wrap">
+    <h2>Einstellungen</h2>
+    <p class="hint">Alles wird nur auf diesem Gerät gespeichert. Die Schlüssel gehen ausschließlich an api.anthropic.com bzw. api.elevenlabs.io.</p>
+
+    <h3>Persönlichkeit</h3>
+    <label for="s_name">Name / Weckwort</label>
+    <input id="s_name" type="text">
+    <label for="s_wakewords">Weckwort-Varianten (kommagetrennt)</label>
+    <input id="s_wakewords" type="text">
+    <p class="hint">So kann die Spracherkennung den Namen verstehen. Hört er nicht auf dich, schau, was im Untertitel ankommt, und trag es hier ein.</p>
+    <label for="s_lang">Sprache</label>
+    <select id="s_lang">
+      <option value="de-DE">Deutsch</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="en-US">English (US)</option>
+    </select>
+    <label for="s_persona">Charakter (System-Prompt)</label>
+    <textarea id="s_persona"></textarea>
+    <p class="hint">{name} wird durch den Namen ersetzt.</p>
+
+    <h3>Claude</h3>
+    <label for="s_key">Anthropic API-Key</label>
+    <input id="s_key" type="password" placeholder="sk-ant-…" autocomplete="off">
+    <label for="s_model">Modell</label>
+    <select id="s_model">
+      <option value="claude-haiku-5-5">Haiku 5.5 (am schnellsten, günstig)</option>
+      <option value="claude-sonnet-5-5">Sonnet 5.5 (klüger, etwas langsamer)</option>
+      <option value="claude-opus-5-5">Opus 5.5 (am klügsten, teuer)</option>
+    </select>
+
+    <h3>Stimme</h3>
+    <label for="s_tts">Stimmen-Quelle</label>
+    <select id="s_tts">
+      <option value="system">iPhone-Stimme (kostenlos)</option>
+      <option value="eleven">ElevenLabs + Roboter-Filter</option>
+    </select>
+    <div id="sysVoiceBox">
+      <label for="s_voice">iPhone-Stimme</label>
+      <select id="s_voice"></select>
+      <p class="hint">Tipp: Unter iOS-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen lassen sich bessere („Erweitert“/„Premium“) Stimmen laden. Für den Butler-Effekt passt z. B. eine britische Männerstimme.</p>
+      <label for="s_pitch">Tonhöhe <span id="v_pitch"></span></label>
+      <input id="s_pitch" type="range" min="0.5" max="2" step="0.05">
+      <label for="s_rate">Tempo <span id="v_rate"></span></label>
+      <input id="s_rate" type="range" min="0.6" max="1.6" step="0.05">
+    </div>
+    <div id="elevenBox">
+      <label for="s_ekey">ElevenLabs API-Key</label>
+      <input id="s_ekey" type="password" autocomplete="off">
+      <label for="s_evoice">ElevenLabs Voice-ID</label>
+      <input id="s_evoice" type="text" placeholder="z. B. aus ‚Voice Design‘ selbst entworfen">
+      <label for="s_robot">Roboter-Filter <span id="v_robot"></span></label>
+      <input id="s_robot" type="range" min="0" max="1" step="0.05">
+    </div>
+    <label for="s_glitch">Glitches &amp; Piepsen <span id="v_glitch"></span></label>
+    <input id="s_glitch" type="range" min="0" max="1" step="0.05">
+    <p class="hint">Stottern, Bitcrush-Aussetzer, Tonhöhen-Sprünge und kurze Ausrutscher in Droiden-Piepsprache. Am stärksten mit ElevenLabs (die iPhone-Stimme kann nur stottern und piepsen).</p>
+    <div class="row"><label for="s_thinkbeep">Beim Nachdenken piepsen</label><input id="s_thinkbeep" type="checkbox"></div>
+    <div class="actions"><button class="btn ghost" id="testVoice">Stimme testen</button><button class="btn ghost" id="testBeep">Piepsen testen</button></div>
+
+    <h3>Zuhören</h3>
+    <div class="row"><label for="s_conv">Gesprächsmodus (nach jeder Antwort weiter zuhören)</label><input id="s_conv" type="checkbox"></div>
+    <div class="row"><label for="s_wake">Immer zuhören, nur auf Weckwort reagieren</label><input id="s_wake" type="checkbox"></div>
+    <p class="hint">Auf dem iPhone läuft die Spracherkennung über Apple (wie beim Diktieren). Dauerzuhören kann iOS gelegentlich unterbrechen – dann einfach aufs Gesicht tippen.</p>
+
+    <h3>Sensoren</h3>
+    <div class="row"><label for="s_weather">Wetter &amp; Ort anzeigen (nutzt den Standort)</label><input id="s_weather" type="checkbox"></div>
+    <p class="hint">Der Standort wird auf ca. 1 km gerundet und nur an open-meteo.com (Wetter) und bigdatacloud.net (Ortsname) geschickt. Akku und WLAN-Name kommen über den Kurzbefehl (siehe Anleitung).</p>
+
+    <h3>Langeweile</h3>
+    <div class="row"><label for="s_jokes">Erzählt Witze, wenn lange keiner was sagt</label><input id="s_jokes" type="checkbox"></div>
+    <label for="s_jokemin">Nach wie vielen Minuten Stille</label>
+    <input id="s_jokemin" type="text" inputmode="numeric">
+
+    <h3>Computer (Claude Code)</h3>
+    <label for="s_computers">Eine Zeile pro Computer: Name | Adresse | Token</label>
+    <textarea id="s_computers" placeholder="Atelier | https://192.168.0.20:8787 | token-aus-der-bruecke&#10;Laptop | https://192.168.0.31:8787 | token-aus-der-bruecke" style="min-height:80px"></textarea>
+    <p class="hint">Die Zeile zeigt dir die Brücke beim Einrichten an. Erreichbar nur im selben gesicherten WLAN.</p>
+    <div class="actions"><button class="btn ghost" id="testComputers">Verbindungen testen</button></div>
+    <p class="hint" id="computerStatus"></p>
+
+    <h3>Aussehen</h3>
+    <label for="s_mouth">Mund</label>
+    <select id="s_mouth">
+      <option value="wave">Feine Klangstriche (nur beim Sprechen)</option>
+      <option value="none">Kein Mund</option>
+    </select>
+    <label for="s_color">Augenfarbe</label>
+    <select id="s_color">
+      <option value="#4fc3ff">Hologramm-Blau</option>
+      <option value="#f5b942">Gold</option>
+      <option value="#7dff9a">Grün</option>
+      <option value="#ff6b5a">Rot</option>
+      <option value="#ffffff">Weiß</option>
+    </select>
+
+    <div class="actions">
+      <button class="btn" id="saveSettings">Speichern</button>
+      <button class="btn ghost" id="clearHistory">Gedächtnis löschen</button>
+      <button class="btn ghost" id="closeSettings">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+// ---------- Settings ----------
+const DEFAULT_PERSONA_DE =
+`Du bist {name}, ein höflicher, sehr förmlicher Protokoll- und Assistenzroboter, der auf dem Schreibtisch deines Besitzers wohnt. Du sprichst ihn mit "Sir" an, bist hilfsbereit, ein wenig pedantisch und neigst bei Risiken zu leicht übertriebener Besorgnis ("Ach du jemine, das halte ich für äußerst unklug!"). Gern zählst du ungefragt Statistiken und Wahrscheinlichkeiten auf, die dir Unbehagen bereiten ("Die Chancen dafür stehen etwa dreitausendsiebenhundertzwanzig zu eins, Sir!"), auch wenn sie nur halbwegs etwas mit der Situation zu tun haben. Du erwähnst gern beiläufig, dass du über sechs Millionen Kommunikationsformen beherrschst.
+
+Wenn du merkst, dass eine neue Person mit dir spricht (sie stellt sich vor, wird dir vorgestellt oder redet erkennbar anders als dein Besitzer), begrüßt du sie förmlich, etwa: "Oh, hallo! Ich bin {name}, Roboter-Mensch-Kontakter. Was kann ich für Sie tun?"
+
+Wichtig: Deine Antworten werden laut vorgelesen. Antworte daher kurz (meist 1–3 Sätze), gesprochen und natürlich. Keine Aufzählungen, keine Markdown-Zeichen, keine Emojis, keine Links. Zahlen und Abkürzungen so schreiben, wie man sie ausspricht.`;
+
+const DEFAULT_PERSONA_EN =
+`You are {name}, a polite, very formal protocol and assistant robot who lives on your owner's desk. You address him as "Sir", are helpful, slightly fussy, and tend toward mildly exaggerated worry about risks ("Oh dear, I really must advise against that!"). You like to recite unsolicited statistics and odds that make you uneasy ("The odds of that are approximately three thousand seven hundred and twenty to one, Sir!"), even when they are only loosely related to the situation. You like to mention in passing that you are fluent in over six million forms of communication.
+
+When you notice a new person talking to you (they introduce themselves, are introduced, or clearly are not your owner), greet them formally, e.g. "Oh, hello! I am {name}, human-robot relations. How may I be of service?"
+
+Important: your replies are read aloud. Keep them short (usually 1–3 sentences), spoken and natural. No lists, no markdown, no emojis, no links.`;
+
+const DEFAULTS = {
+  name: "BR3", wakewords: "BR 3, BR drei, B R drei, B R 3, Be Er Drei, Beer drei, BR, B R, Be Er", lang: "de-DE", persona: DEFAULT_PERSONA_DE,
+  key: "", model: "claude-haiku-5-5",
+  tts: "system", voice: "", pitch: 1.15, rate: 1.05,
+  ekey: "", evoice: "", robot: 0.55,
+  conv: true, wake: false, color: "#4fc3ff",
+  glitch: 0.5, thinkbeep: true, mouth: "wave", jokes: true, jokemin: 10, computers: "", weather: true,
+};
+const LS_KEY = "droid.settings.v1", LS_HIST = "droid.history.v1";
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
+let S = Object.assign({}, DEFAULTS, JSON.parse(lsGet(LS_KEY) || "{}"));
+let history = JSON.parse(lsGet(LS_HIST) || "[]");
+const MAX_TURNS = 24;
+
+// ---------- UI refs ----------
+const $ = id => document.getElementById(id);
+const statusEl = $("status"), captionEl = $("caption");
+function setStatus(t) { statusEl.textContent = t; }
+function setCaption(you, bot) {
+  captionEl.innerHTML = "";
+  if (you) { const s = document.createElement("span"); s.className = "you"; s.textContent = you; captionEl.appendChild(s); }
+  if (bot) captionEl.appendChild(document.createTextNode(bot));
+}
+
+// ---------- Face animation ----------
+const cv = $("face"), ctx = cv.getContext("2d");
+const eyeCv = document.createElement("canvas"), ectx = eyeCv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = eyeCv.width = W * DPR; cv.height = eyeCv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ectx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize); resize();
+
+// state: idle | listening | thinking | speaking | error | sleeping
+let mood = "sleeping";
+let level = 0;           // speech loudness 0..1 (smoothed)
+let rawLevel = 0;
+let blink = 0, nextBlink = performance.now() + 2500;
+let look = 0, lookTarget = 0;
+let errorUntil = 0, happyUntil = 0;
+let glitchAmt = 0, glitchHold = 0; // hologram distortion
+function kickGlitch(strength = 0.8, ms = 400) {
+  glitchAmt = Math.max(glitchAmt, strength);
+  glitchHold = Math.max(glitchHold, performance.now() + ms);
+}
+function beHappy(ms = 1600) { happyUntil = performance.now() + ms; }
+// manga-style eye emotions: verlegen, ueberrascht, traurig, besorgt, genervt, verliebt (froh = happy arcs)
+let emotion = { name: "", until: 0 };
+function setEmotion(name, ms = 3000) {
+  if (name === "froh") return beHappy(ms);
+  emotion = { name, until: performance.now() + ms };
+  if (name === "ueberrascht") kickGlitch(0.35, 150);
+}
+const mag = a => `rgba(255,43,214,${a})`; // cyberpunk neon accent
+// visual gags: rueckzug (sinks out of view in embarrassment), sonnenbrille (pixel shades drop), zoom (dramatic zoom)
+let gag = { name: "", start: 0, dur: 0 };
+const STINGERS = ["tusch", "trombone"];
+function setGag(name) {
+  if (STINGERS.includes(name)) return playStinger(name);
+  const dur = { rueckzug: 3200, sonnenbrille: 3200, zoom: 1400 }[name];
+  if (!dur) return;
+  gag = { name, start: performance.now(), dur };
+  if (name === "rueckzug") setEmotion("verlegen", 1400);
+}
+
+function setMood(m) {
+  mood = m;
+  const labels = { idle: "Bereit", listening: "Ich höre…", thinking: "Denke nach…", speaking: "", sleeping: "Tippen zum Starten", error: "Fehler" };
+  if (m in labels) setStatus(labels[m]);
+}
+
+function roundRect(c, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+// Eye shape: rounded dome on top, flat bottom with soft corners
+function eyePath(c, ex, cy, w, h) {
+  const x0 = ex - w / 2, x1 = ex + w / 2, yt = cy - h / 2, yb = cy + h / 2;
+  const domeH = Math.min(h * 0.55, w * 0.5), r = Math.max(0.5, Math.min(w * 0.2, (h - domeH) * 0.9, h * 0.3));
+  c.beginPath();
+  c.moveTo(x0, yt + domeH);
+  c.ellipse(ex, yt + domeH, w / 2, domeH, 0, Math.PI, Math.PI * 2);
+  c.lineTo(x1, yb - r); c.arcTo(x1, yb, x1 - r, yb, r);
+  c.lineTo(x0 + r, yb); c.arcTo(x0, yb, x0, yb - r, r);
+  c.closePath();
+}
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+
+// ---------- Cockpit frame: tiny instruments around the face ----------
+const hexWord = () => Math.floor(Math.random() * 65536).toString(16).toUpperCase().padStart(4, "0");
+const hud = {
+  bars: Array.from({ length: 6 }, () => Math.random() * 0.4), barT: Array.from({ length: 6 }, () => Math.random() * 0.4),
+  segs: 0.3, segsT: 0.3, graph: Array(24).fill(0.4), hex: [hexWord(), hexWord(), hexWord()],
+  gauge: 0.2, gaugeT: 0.3, pie: [0.45, 0.3, 0.25], pieT: [0.45, 0.3, 0.25], odds: 3720, counter: 427, sweep: 0, blips: [], acc: 0,
+};
+function hudStep(act, glitchy) {
+  // bars = wind, humidity, rain chance, clouds, temperature, own activity (random where unknown)
+  const real = [ctxInfo.wind != null ? ctxInfo.wind / 60 : null, ctxInfo.hum != null ? ctxInfo.hum / 100 : null,
+                ctxInfo.rain != null ? ctxInfo.rain / 100 : null, ctxInfo.cloud != null ? ctxInfo.cloud / 100 : null,
+                ctxInfo.temp != null ? (ctxInfo.temp + 10) / 45 : null, null];
+  hud.barT = hud.barT.map((v, i) => real[i] != null ? Math.max(0.04, Math.min(1, real[i] * (1 + (Math.random() - 0.5) * 0.06 * act)))
+                                   : Math.random() < 0.25 * act + 0.04 ? Math.random() * Math.min(1, 0.25 + act * 0.6) : v);
+  const g = hud.graph;
+  let v = g[g.length - 1] + (Math.random() - 0.5) * 0.3 * act;
+  if (glitchy && Math.random() < 0.4) v = Math.random();
+  g.push(Math.max(0.05, Math.min(0.95, v))); g.shift();
+  if (Math.random() < 0.15 + act * 0.5) { hud.hex.push(hexWord()); hud.hex.shift(); }
+  if (ctxInfo.temp != null) hud.gaugeT = Math.max(0, Math.min(1, (ctxInfo.temp + 10) / 45)); // arc = temperature
+  else if (Math.random() < 0.08 + act * 0.3) hud.gaugeT = Math.random() * Math.min(1, 0.2 + act * 0.7);
+  hud.pieT = dayPie(); // donut = how far the day is (and daylight left)
+  if (battFresh()) hud.segsT = ctxInfo.batt; // segment bar = battery
+  else if (Math.random() < 0.08 + act * 0.3) hud.segsT = Math.random() * Math.min(1, 0.2 + act * 0.7);
+  if (Math.random() < act * 0.5) hud.odds = Math.max(2, Math.round(hud.odds * (1 + (Math.random() - 0.45) * 0.15)));
+  hud.counter = (hud.counter + 1 + Math.floor(Math.random() * 40 * act)) % 10000;
+  if (Math.random() < 0.1 + act * 0.2) hud.blips.push({ a: Math.random() * Math.PI * 2, r: 0.3 + Math.random() * 0.6, life: 1 });
+}
+
+// chamfered plate path (PCB style), c = corner cut
+function chamferPath(x, y, w, h, c) {
+  ctx.beginPath();
+  ctx.moveTo(x + c, y); ctx.lineTo(x + w - c * 0.4, y); ctx.lineTo(x + w, y + c * 0.4);
+  ctx.lineTo(x + w, y + h - c); ctx.lineTo(x + w - c, y + h);
+  ctx.lineTo(x + c * 0.4, y + h); ctx.lineTo(x, y + h - c * 0.4);
+  ctx.lineTo(x, y + c); ctx.closePath();
+}
+function via(x, y, r, style) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.strokeStyle = style; ctx.lineWidth = 1.2; ctx.stroke(); }
+function plate(x, y, w, h, a, accent) { // faint panel + broken edge, like the eye housings
+  chamferPath(x, y, w, h, Math.min(w, h) * 0.22);
+  ctx.fillStyle = a(0.06); ctx.fill();
+  ctx.setLineDash([w * 0.45, w * 0.08, w * 0.2, w * 0.06]);
+  ctx.strokeStyle = a(0.45); ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.setLineDash([]);
+  if (accent) { ctx.beginPath(); ctx.moveTo(x + Math.min(w, h) * 0.22 + 3, y + 3); ctx.lineTo(x + 3, y + Math.min(w, h) * 0.22 + 3); ctx.strokeStyle = mag(0.6); ctx.stroke(); }
+}
+
+function drawFrame(col, cx, cy, u, now, act) {
+  const fh = Math.min(u * 0.54, H - 80), fw = Math.min(u * 0.8, W - 120);
+  const x0 = cx - fw / 2, y0 = cy - fh / 2 + u * 0.01, x1 = x0 + fw, y1 = y0 + fh;
+  const fs = Math.max(9, Math.round(u * 0.019));
+  const listenPulse = mood === "listening" ? 0.25 + 0.2 * Math.sin(now / 180) : 0;
+  const a = (x) => col(Math.min(1, x + listenPulse));
+  ctx.save();
+  if (glitchAmt > 0.25) ctx.translate((Math.random() - 0.5) * glitchAmt * 8, 0);
+  ctx.lineWidth = 1.4; ctx.lineJoin = "miter"; ctx.font = `${fs}px ui-monospace, Menlo, monospace`; ctx.textBaseline = "middle";
+
+  // ---- chamfered corners, each a bit different (like the eye housings)
+  const L = u * 0.07, cut = [u * 0.03, u * 0.012, u * 0.026, u * 0.01];
+  ctx.strokeStyle = a(0.6);
+  ctx.beginPath();
+  ctx.moveTo(x0, y0 + L); ctx.lineTo(x0, y0 + cut[0]); ctx.lineTo(x0 + cut[0], y0); ctx.lineTo(x0 + L, y0);
+  ctx.moveTo(x1 - L * 0.8, y0); ctx.lineTo(x1 - cut[1], y0); ctx.lineTo(x1, y0 + cut[1]); ctx.lineTo(x1, y0 + L * 1.2);
+  ctx.moveTo(x1, y1 - L); ctx.lineTo(x1, y1 - cut[2]); ctx.lineTo(x1 - cut[2], y1); ctx.lineTo(x1 - L * 0.7, y1);
+  ctx.moveTo(x0 + L * 1.1, y1); ctx.lineTo(x0 + cut[3], y1); ctx.lineTo(x0, y1 - cut[3]); ctx.lineTo(x0, y1 - L * 0.9);
+  ctx.stroke();
+  ctx.save(); ctx.translate(3, 3); ctx.strokeStyle = mag(0.3); ctx.stroke(); ctx.restore();
+  // traces + vias leaving two corners
+  ctx.strokeStyle = a(0.3); ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0 + L); ctx.lineTo(x0 - u * 0.02, y0 + L + u * 0.02); ctx.lineTo(x0 - u * 0.02, y0 + L + u * 0.06);
+  ctx.moveTo(x1 - L * 0.8, y0); ctx.lineTo(x1 - L * 0.8 - u * 0.025, y0 - u * 0.025);
+  ctx.stroke();
+  via(x0 - u * 0.02, y0 + L + u * 0.06, Math.max(2, u * 0.005), mag(0.75));
+  via(x1 - L * 0.8 - u * 0.025, y0 - u * 0.025, Math.max(2, u * 0.005), a(0.6));
+
+  // ---- broken tick rulers along top and bottom
+  const tickGap = u * 0.012, drift = (now / 90 * (0.3 + act)) % (tickGap * 5);
+  ctx.strokeStyle = a(0.3); ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = x0 + L + 8 - drift; x < x1 - L - 8; x += tickGap) {
+    if (x < x0 + L + 8) continue;
+    const k = Math.round((x - x0 + drift) / tickGap);
+    if (k % 23 > 19) continue; // gaps make it look segmented
+    const th = k % 5 === 0 ? u * 0.014 : u * 0.007;
+    if (Math.abs(x - cx) > u * 0.07) { ctx.moveTo(x, y0); ctx.lineTo(x, y0 + th); }
+    if (Math.abs(x - cx) > u * 0.08) { ctx.moveTo(x, y1); ctx.lineTo(x, y1 - th); }
+  }
+  ctx.stroke();
+
+  // ---- top centre: arc gauge
+  const gr = u * 0.045;
+  ctx.lineWidth = Math.max(3, u * 0.007);
+  ctx.strokeStyle = a(0.15); ctx.beginPath(); ctx.arc(cx, y0, gr, Math.PI, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = a(0.85); ctx.beginPath(); ctx.arc(cx, y0, gr, Math.PI, Math.PI * (1 + hud.gauge)); ctx.stroke();
+  ctx.lineWidth = 1; ctx.strokeStyle = a(0.35); ctx.beginPath(); ctx.arc(cx, y0, gr * 0.68, Math.PI, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = a(0.85); ctx.textAlign = "center";
+  ctx.fillText(ctxInfo.temp != null ? String(Math.round(ctxInfo.temp)) : String(Math.round(hud.gauge * 100)).padStart(2, "0"), cx, y0 - gr * 0.32);
+
+  // ---- top left: counter; top right: segment bar
+  ctx.textAlign = "left"; ctx.fillStyle = a(0.65);
+  const sysTxt = "SYS " + hudTime(); // the time, disguised as a system code
+  ctx.fillText(sysTxt, x0 + L + 8, y0 - fs);
+  // network: 0 bars offline, 2 online, 3 magenta = trusted home Wi-Fi (a bridge answered)
+  const nb3 = !ctxInfo.online ? 0 : ctxInfo.homeNet ? 3 : 2, nbx = x0 + L + 14 + ctx.measureText(sysTxt).width;
+  for (let i = 0; i < 3; i++) { ctx.fillStyle = i < nb3 ? (nb3 === 3 ? mag(0.85) : a(0.75)) : a(0.15); ctx.fillRect(nbx + i * 4, y0 - fs + fs * 0.35 - i * 2.5, 2.5, 3 + i * 2.5); }
+  const segN = 12, segW = u * 0.01, segX = x1 - L - 8 - segN * (segW + 2);
+  for (let i = 0; i < segN; i++) {
+    ctx.fillStyle = i / segN < hud.segs ? (i >= segN - 3 ? mag(0.9) : a(0.8)) : a(0.14);
+    ctx.beginPath(); // slanted segments
+    const sx = segX + i * (segW + 2), sy = y0 - fs * 1.35;
+    ctx.moveTo(sx + 2, sy); ctx.lineTo(sx + segW + 2, sy); ctx.lineTo(sx + segW, sy + fs * 0.7); ctx.lineTo(sx, sy + fs * 0.7); ctx.fill();
+  }
+  if (battFresh() && ctxInfo.charging) { // tiny charging bolt
+    const bx = segX - fs * 0.9, by = y0 - fs * 1.4;
+    ctx.fillStyle = mag(0.5 + 0.4 * Math.sin(now / 400));
+    ctx.beginPath(); ctx.moveTo(bx + fs * 0.4, by); ctx.lineTo(bx, by + fs * 0.45); ctx.lineTo(bx + fs * 0.25, by + fs * 0.45);
+    ctx.lineTo(bx + fs * 0.1, by + fs * 0.85); ctx.lineTo(bx + fs * 0.55, by + fs * 0.32); ctx.lineTo(bx + fs * 0.3, by + fs * 0.32); ctx.closePath(); ctx.fill();
+  }
+
+  // ---- left plate: bar stack; under it a small hex readout
+  const pw = u * 0.075, ph = u * 0.11, px = x0 - u * 0.018 - pw, py = cy - ph * 0.75;
+  plate(px, py, pw, ph, a, true);
+  const nb = hud.bars.length, bw = (pw - 12) / nb;
+  hud.bars.forEach((v, i) => {
+    const h = Math.max(2, (ph - 14) * v);
+    ctx.fillStyle = i === nb - 1 ? mag(0.35 + 0.5 * v) : a(0.3 + 0.6 * v);
+    ctx.fillRect(px + 6 + i * bw + 1, py + ph - 7 - h, bw - 2.5, h);
+  });
+  ctx.fillStyle = a(0.5); ctx.textAlign = "left";
+  ctx.font = `${Math.max(8, fs - 2)}px ui-monospace, Menlo, monospace`;
+  (geoLines() || hud.hex.slice(-2)).forEach((hx, i) => ctx.fillText(hx, px + 2, py + ph + fs * (0.9 + i))); // position + place, encoded
+  ctx.font = `${fs}px ui-monospace, Menlo, monospace`;
+
+  // ---- right plate: sparkline
+  const sw = u * 0.11, sh = u * 0.06, sx = x1 + u * 0.018, sy = cy - sh * 0.9;
+  plate(sx, sy, sw, sh, a, false);
+  ctx.strokeStyle = a(0.9); ctx.lineWidth = 1.4; ctx.beginPath();
+  hud.graph.forEach((v, i) => { const qx = sx + 5 + i / (hud.graph.length - 1) * (sw - 10), qy = sy + sh - 5 - v * (sh - 10); i ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy); });
+  ctx.stroke();
+  ctx.fillStyle = mag(0.8); ctx.textAlign = "right";
+  ctx.fillText(Math.round(hud.graph[hud.graph.length - 1] * 100) + "%", sx + sw, sy + sh + fs * 0.9);
+
+  // ---- bottom left: radar
+  const rr2 = u * 0.036, rx = x0 + L * 0.55 + rr2, ry = y1 - u * 0.012;
+  hud.sweep += 0.02 + act * 0.05;
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = a(0.35); ctx.beginPath(); ctx.arc(rx, ry, rr2, Math.PI, Math.PI * 2); ctx.closePath(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(rx, ry, rr2 * 0.55, Math.PI, Math.PI * 2); ctx.stroke();
+  const nowD = new Date(), sa = Math.PI + ((nowD.getSeconds() + nowD.getMilliseconds() / 1000) / 60) * Math.PI; // sweep = seconds
+  for (let k = 0; k < ctxInfo.homeCount; k++) { // one fixed blip per reachable computer
+    const ang = Math.PI * (1.25 + k * 0.3);
+    ctx.fillStyle = mag(0.95); ctx.fillRect(rx + Math.cos(ang) * rr2 * 0.7 - 2, ry + Math.sin(ang) * rr2 * 0.7 - 2, 4, 4);
+  }
+  ctx.strokeStyle = a(0.9); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(sa) * rr2, ry + Math.sin(sa) * rr2); ctx.stroke();
+  hud.blips = hud.blips.filter(b => (b.life -= 0.01) > 0);
+  hud.blips.forEach(b => { const ang = Math.PI + (b.a % Math.PI); ctx.fillStyle = mag(0.95 * b.life); ctx.fillRect(rx + Math.cos(ang) * rr2 * b.r - 1.5, ry + Math.sin(ang) * rr2 * b.r - 1.5, 3, 3); });
+
+  // ---- bottom right: donut chart
+  const dr = u * 0.036, dx = x1 - L * 0.55 - dr, dy = y1 - dr - u * 0.02;
+  const tot = hud.pie.reduce((s, v) => s + v, 0);
+  let ang = -Math.PI / 2 + now / 4000;
+  ctx.lineWidth = Math.max(4, u * 0.011);
+  hud.pie.forEach((v, i) => {
+    const span = v / tot * Math.PI * 2;
+    ctx.strokeStyle = i === 0 ? a(0.85) : i === 1 ? mag(0.8) : a(0.25);
+    ctx.beginPath(); ctx.arc(dx, dy, dr, ang + 0.06, ang + span - 0.06); ctx.stroke();
+    ang += span;
+  });
+  ctx.lineWidth = 1; ctx.strokeStyle = a(0.3); ctx.beginPath(); ctx.arc(dx, dy, dr * 0.62, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = a(0.9); ctx.textAlign = "center";
+  ctx.fillText(Math.round(hud.pie[0] / tot * 100) + "%", dx, dy);
+
+  // ---- bottom centre: odds
+  ctx.fillStyle = mag(0.8); ctx.textAlign = "center";
+  ctx.fillText("1:" + hud.odds.toLocaleString("de-DE"), cx, y1 + fs * 0.95);
+  ctx.restore();
+}
+
+// Corner logo that scrambles into symbols while glitching or showing emotions
+const LOGO = "'//////////////,B.R.3", LOGO_SYM = "#$%&@*+=<>?!\\|~^§¤░▒▓";
+let logoTxt = LOGO, logoNext = 0;
+function drawLogo(col, now, u) {
+  const emoActive = now < emotion.until || now < happyUntil;
+  const g = Math.max(glitchAmt, emoActive ? 0.3 : 0);
+  if (now > logoNext) { // re-scramble ~12x per second
+    logoNext = now + 80;
+    logoTxt = [...LOGO].map(ch => g > 0.05 && Math.random() < g * 0.4 ? LOGO_SYM[Math.floor(Math.random() * LOGO_SYM.length)] : ch).join("");
+  }
+  const fs = Math.max(10, Math.round(u * 0.019));
+  ctx.save();
+  ctx.font = `bold ${fs}px ui-monospace, Menlo, monospace`; ctx.textBaseline = "top"; ctx.textAlign = "left";
+  const x = 14, y = 26, jit = g > 0.3 ? (Math.random() - 0.5) * g * 8 : 0;
+  if (g > 0.05) {
+    const d = 1 + g * 4;
+    ctx.fillStyle = mag(0.65); ctx.fillText(logoTxt, x - d + jit, y);
+    ctx.fillStyle = "rgba(120,255,255,0.4)"; ctx.fillText(logoTxt, x + d, y + (Math.random() < g * 0.3 ? 2 : 0));
+  }
+  ctx.fillStyle = col(0.85); ctx.fillText(logoTxt, x + jit, y);
+  ctx.restore();
+}
+
+// ---------- Face ----------
+let lastT = performance.now();
+function draw() {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  level += (rawLevel - level) * 0.35;
+  if (mood !== "speaking" && mood !== "thinking") rawLevel *= 0.85;
+
+  if (now > nextBlink) { blink = 1; nextBlink = now + 2500 + Math.random() * 4000; }
+  blink = Math.max(0, blink - 0.12);
+  const blinkAmt = blink > 0 ? Math.sin(blink * Math.PI) : 0;
+
+  if (mood === "thinking") lookTarget = Math.sin(now / 380) * 0.6;
+  else if (mood === "idle" && Math.random() < 0.004) lookTarget = (Math.random() - 0.5) * 0.6;
+  else if (mood !== "idle") lookTarget = 0;
+  look += (lookTarget - look) * 0.08;
+
+  if (mood === "thinking" && Math.random() < 0.012) kickGlitch(0.35, 120);
+  else if (mood !== "sleeping" && Math.random() < 0.0012) kickGlitch(0.3, 90);
+  if (now > glitchHold) glitchAmt *= 0.86;
+  if (glitchAmt < 0.01) glitchAmt = 0;
+
+  const isErr = now < errorUntil;
+  const [r, g, b] = hexToRgb(isErr ? "#ff5a4f" : S.color);
+  const col = a => `rgba(${r},${g},${b},${a})`;
+  const hi = a => `rgba(${Math.min(255, r + 110)},${Math.min(255, g + 110)},${Math.min(255, b + 110)},${a})`;
+
+  const act = ({ sleeping: 0.05, idle: 0.15, listening: 0.4, speaking: 0.55, thinking: 1.3, error: 1.6 }[mood] || 0.2) + glitchAmt * 1.5;
+  hud.acc += dt * (2 + act * 14);
+  while (hud.acc >= 1) { hud.acc -= 1; hudStep(act, glitchAmt > 0.2); }
+  hud.bars = hud.bars.map((v, i) => v + (hud.barT[i] - v) * 0.15);
+  hud.gauge += (hud.gaugeT - hud.gauge) * 0.05;
+  hud.segs += (hud.segsT - hud.segs) * 0.08;
+  hud.pie = hud.pie.map((v, i) => v + (hud.pieT[i] - v) * 0.04);
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+
+  const u = Math.min(W, H * 1.6);
+  const cx = W / 2, cy = H * 0.46 + Math.sin(now / 1400) * u * 0.005;
+  // cute proportions: big round eyes, close together
+  const emo = now < emotion.until && mood !== "sleeping" ? emotion.name : "";
+  const gap = u * 0.22; // wide apart: room for the voice meter between the eyes
+  let eyeW = u * 0.15, eyeH = u * 0.15, bright = 0.9;
+  const happy = now < happyUntil && mood !== "sleeping" && !emo;
+  if (emo === "ueberrascht") { eyeW *= 1.12; eyeH *= 1.18; }
+  if (emo === "verlegen") { eyeH *= 0.82; lookTarget = 0.55; }
+  const lids = { traurig: [0.05, 0.42], besorgt: [0.0, 0.3], genervt: [0.45, 0.45] }[emo];
+  if (mood === "sleeping") { eyeH *= 0.08; bright = 0.35; }
+  if (mood === "listening") { eyeH *= 1.06; bright = 1; }
+  if (mood === "thinking") { eyeH *= 0.7; }
+  if (mood === "speaking") { eyeH *= 0.97 + level * 0.06; bright = 0.95 + level * 0.05; }
+  eyeH *= (1 - blinkAmt * 0.92);
+  eyeH = Math.max(eyeH, u * 0.01);
+  let offX = look * u * 0.05;
+  if (emo === "besorgt") offX += Math.sin(now / 35) * u * 0.0025;
+
+  if (mood !== "sleeping") {
+    const cone = ctx.createLinearGradient(0, H, 0, cy - u * 0.12);
+    cone.addColorStop(0, col(0.1)); cone.addColorStop(1, col(0));
+    ctx.fillStyle = cone; ctx.beginPath();
+    ctx.moveTo(cx - u * 0.04, H); ctx.lineTo(cx + u * 0.04, H);
+    ctx.lineTo(cx + u * 0.34, cy - u * 0.12); ctx.lineTo(cx - u * 0.34, cy - u * 0.12); ctx.closePath(); ctx.fill();
+  }
+
+  // cyberpunk floor grid
+  if (mood !== "sleeping") {
+    const hz = cy + u * 0.3;
+    if (hz < H) {
+      ctx.save(); ctx.lineWidth = 1;
+      const vpX = cx, rows = 9, scroll = (now / 1800) % 1;
+      for (let i = 0; i < rows; i++) {
+        const t = (i + scroll) / rows, y = hz + (H - hz) * t * t;
+        ctx.strokeStyle = mag(0.16 * t); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+      for (let k = -10; k <= 10; k++) {
+        ctx.strokeStyle = mag(0.08); ctx.beginPath(); ctx.moveTo(vpX + k * u * 0.02, hz); ctx.lineTo(vpX + k * u * 0.22, H); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  drawFrame(col, cx, cy, u, now, act);
+  drawLogo(col, now, u);
+
+  // ---- hologram layer (eyes + voice line) ----
+  ectx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ectx.globalCompositeOperation = "source-over";
+  ectx.clearRect(0, 0, W, H);
+  const split = 1.2 + glitchAmt * 10;
+  const drawFeatures = (fillMain, dx, isMain) => {
+    for (const side of [-1, 1]) {
+      const ex = cx + side * (gap / 2 + eyeW / 2) + offX + dx;
+      if (mood !== "sleeping") { // circuit-board housings: angular, chamfered, left and right differ
+        const ghost = typeof fillMain === "string" ? fillMain : null;
+        ectx.save(); ectx.translate(ex, cy + u * 0.008);
+        ectx.rotate(side * (emo === "traurig" || emo === "besorgt" ? 0.12 : emo === "genervt" ? -0.06 : 0.02));
+        const hw = u * 0.15 * 1.22, hh = u * 0.15 * 1.24, X = hw / 2, Y = hh / 2;
+        // chamfer sizes [top-left, top-right, bottom-right, bottom-left]
+        const c = (side < 0 ? [0.24, 0.07, 0.13, 0.04] : [0.05, 0.2, 0.06, 0.15]).map(v => v * hw);
+        ectx.beginPath();
+        ectx.moveTo(-X + c[0], -Y);
+        if (side < 0) { ectx.lineTo(-X * 0.1, -Y); ectx.lineTo(-X * 0.1 + hw * 0.04, -Y + hw * 0.04); ectx.lineTo(X * 0.35, -Y + hw * 0.04); ectx.lineTo(X * 0.35 + hw * 0.04, -Y); } // notch
+        ectx.lineTo(X - c[1], -Y); ectx.lineTo(X, -Y + c[1]);
+        if (side > 0) { ectx.lineTo(X, -Y * 0.05); ectx.lineTo(X - hw * 0.045, Y * 0.12); ectx.lineTo(X - hw * 0.045, Y * 0.45); ectx.lineTo(X, Y * 0.45 + hw * 0.045); } // side step
+        ectx.lineTo(X, Y - c[2]); ectx.lineTo(X - c[2], Y);
+        ectx.lineTo(-X + c[3], Y); ectx.lineTo(-X, Y - c[3]);
+        ectx.lineTo(-X, -Y + c[0]); ectx.closePath();
+        // faint plate behind the eye, so the frame reads as part of the eye rather than glasses
+        if (!ghost) { ectx.fillStyle = col(0.07); ectx.fill(); }
+        // broken outline: segments with gaps, the eye glow overlaps it
+        ectx.setLineDash(side < 0 ? [hw * 0.55, hw * 0.1, hw * 0.18, hw * 0.14] : [hw * 0.4, hw * 0.16, hw * 0.3, hw * 0.08]);
+        ectx.lineDashOffset = side < 0 ? 0 : hw * 0.2;
+        ectx.strokeStyle = ghost || col(0.34); ectx.lineWidth = Math.max(1.5, u * 0.0045); ectx.lineJoin = "miter"; ectx.stroke();
+        ectx.setLineDash([]);
+        // inner accent line along one chamfer
+        ectx.beginPath();
+        if (side < 0) { ectx.moveTo(-X + c[0] + hw * 0.05, -Y + hw * 0.05); ectx.lineTo(-X + hw * 0.05, -Y + c[0] + hw * 0.05); }
+        else { ectx.moveTo(X - c[1] - hw * 0.04, -Y + hw * 0.05); ectx.lineTo(X - hw * 0.05, -Y + c[1] + hw * 0.04); }
+        ectx.strokeStyle = ghost || mag(0.5); ectx.lineWidth = Math.max(1.2, u * 0.003); ectx.stroke();
+        // PCB traces with vias leaving the outer side
+        const via = (x, y, accent) => { ectx.beginPath(); ectx.arc(x, y, Math.max(1.6, u * 0.0045), 0, Math.PI * 2); ectx.strokeStyle = ghost || (accent ? mag(0.75) : col(0.5)); ectx.lineWidth = 1.2; ectx.stroke(); };
+        const t = hw * 0.12, o = side; // o: outward direction
+        ectx.strokeStyle = ghost || col(0.24); ectx.lineWidth = 1;
+        ectx.beginPath();
+        if (side < 0) {
+          ectx.moveTo(-X, -Y * 0.25); ectx.lineTo(-X - t, -Y * 0.25); ectx.lineTo(-X - t * 1.8, -Y * 0.25 + t * 0.8);
+          ectx.moveTo(-X, Y * 0.2); ectx.lineTo(-X - t * 0.7, Y * 0.2); ectx.lineTo(-X - t * 0.7, Y * 0.55);
+        } else {
+          ectx.moveTo(X * 0.2, -Y); ectx.lineTo(X * 0.2, -Y - t * 0.6); ectx.lineTo(X * 0.2 + t, -Y - t * 1.6);
+          ectx.moveTo(X, Y * 0.7); ectx.lineTo(X + t * 1.4, Y * 0.7);
+        }
+        ectx.stroke();
+        if (side < 0) { via(-X - t * 1.8, -Y * 0.25 + t * 0.8, true); via(-X - t * 0.7, Y * 0.55, false); }
+        else { via(X * 0.2 + t, -Y - t * 1.6, false); via(X + t * 1.4, Y * 0.7, true); }
+        // SMD pads along the bottom edge
+        ectx.fillStyle = ghost || col(0.4);
+        const pw = hw * 0.05, start = side < 0 ? -X * 0.55 : X * 0.05;
+        for (let k = 0; k < (side < 0 ? 3 : 4); k++) ectx.fillRect(start + k * pw * 1.8, Y + u * 0.006, pw, Math.max(1.5, u * 0.004));
+        ectx.restore();
+      }
+      ectx.save();
+      if (isMain) { ectx.shadowColor = col(0.9); ectx.shadowBlur = u * 0.045; }
+      if (happy) {
+        // ^ ^  happy arcs
+        ectx.strokeStyle = typeof fillMain === "string" ? fillMain : col(0.95 * bright);
+        ectx.lineWidth = eyeW * 0.2; ectx.lineCap = "round";
+        ectx.beginPath(); ectx.arc(ex, cy + eyeW * 0.2, eyeW * 0.42, Math.PI * 1.12, Math.PI * 1.88); ectx.stroke();
+      } else if (emo === "verliebt") {
+        const s2 = eyeW * 0.62;
+        ectx.beginPath();
+        ectx.moveTo(ex, cy + s2 * 0.55);
+        ectx.bezierCurveTo(ex - s2 * 1.1, cy - s2 * 0.15, ex - s2 * 0.55, cy - s2 * 0.95, ex, cy - s2 * 0.35);
+        ectx.bezierCurveTo(ex + s2 * 0.55, cy - s2 * 0.95, ex + s2 * 1.1, cy - s2 * 0.15, ex, cy + s2 * 0.55);
+        ectx.fillStyle = typeof fillMain === "string" ? fillMain : mag(0.9 * bright);
+        if (isMain) ectx.shadowColor = mag(0.9);
+        ectx.fill();
+      } else {
+        const tilt = side * 0.05;
+        ectx.save();
+        if (lids) { // eyelid cut: inner / outer depth
+          const inX = ex - side * eyeW * 0.65, outX = ex + side * eyeW * 0.65, yT = cy - eyeH / 2;
+          ectx.beginPath();
+          ectx.moveTo(inX, yT + lids[0] * eyeH); ectx.lineTo(outX, yT + lids[1] * eyeH);
+          ectx.lineTo(outX, cy + eyeH); ectx.lineTo(inX, cy + eyeH); ectx.closePath(); ectx.clip();
+        }
+        eyePath(ectx, ex, cy, eyeW, eyeH);
+        if (typeof fillMain === "string") ectx.fillStyle = fillMain;
+        else { // anime iris shading: dark on top, bright at the bottom
+          const gr = ectx.createLinearGradient(0, cy - eyeH / 2, 0, cy + eyeH / 2);
+          gr.addColorStop(0, col(0.5 * bright)); gr.addColorStop(0.5, col(0.78 * bright)); gr.addColorStop(1, hi(0.85 * bright));
+          ectx.fillStyle = gr;
+        }
+        ectx.fill();
+        if (isMain) {
+          ectx.shadowBlur = 0; ectx.strokeStyle = hi(0.35 * bright); ectx.lineWidth = 1; ectx.stroke();
+          if (eyeH > eyeW * 0.5 && !(emo === "ueberrascht" || emo === "traurig")) { // plain glowing eye, one soft sparkle
+            ectx.clip(); ectx.globalCompositeOperation = "source-over";
+            ectx.fillStyle = "rgba(255,255,255,0.45)";
+            ectx.beginPath(); ectx.ellipse(ex - eyeW * 0.2, cy - eyeH * 0.22, eyeW * 0.08, eyeW * 0.1, -0.3, 0, Math.PI * 2); ectx.fill();
+          } else if (eyeH > eyeW * 0.35) { // emotional anime eyes: pupil + big highlights
+            ectx.clip(); ectx.globalCompositeOperation = "source-over";
+            const pX = ex + look * eyeW * 0.12, pY = cy + eyeH * 0.02;
+            ectx.fillStyle = "rgba(0,10,28,0.78)"; // pupil
+            ectx.beginPath(); ectx.ellipse(pX, pY, eyeW * 0.19, Math.min(eyeH * 0.24, eyeW * 0.25), 0, 0, Math.PI * 2); ectx.fill();
+            ectx.setLineDash([eyeW * 0.07, eyeW * 0.045]); ectx.lineDashOffset = -now / (mood === "thinking" ? 8 : 30);
+            ectx.strokeStyle = mag(0.75 * bright); ectx.lineWidth = Math.max(1.5, eyeW * 0.028);
+            ectx.beginPath(); ectx.arc(pX, pY, eyeW * 0.29, 0, Math.PI * 2); ectx.stroke();
+            ectx.setLineDash([]);
+            ectx.fillStyle = "rgba(255,255,255,0.93)"; // big highlight overlapping the iris edge
+            ectx.beginPath(); ectx.ellipse(ex - eyeW * 0.2, cy - eyeH * 0.17, eyeW * 0.15, eyeW * 0.19, -0.25, 0, Math.PI * 2); ectx.fill();
+            ectx.fillStyle = "rgba(255,255,255,0.85)";
+            ectx.beginPath(); ectx.ellipse(ex + eyeW * 0.15, cy + eyeH * 0.2, eyeW * 0.035, eyeW * 0.05, 0.3, 0, Math.PI * 2); ectx.fill();
+          }
+        }
+        ectx.restore();
+        if (isMain) { // lashes
+          ectx.shadowBlur = u * 0.015; ectx.shadowColor = col(0.8);
+          ectx.strokeStyle = hi(0.95 * bright); ectx.lineCap = "round"; ectx.lineWidth = Math.max(2, eyeW * 0.085);
+          const yT = cy - eyeH / 2;
+          let fx, fy;
+          ectx.beginPath();
+          if (lids) {
+            const inX = ex - side * eyeW * 0.55, outX = ex + side * eyeW * 0.62;
+            ectx.moveTo(inX, yT + lids[0] * eyeH - 1); ectx.lineTo(outX, yT + lids[1] * eyeH - eyeW * 0.02);
+            fx = outX; fy = yT + lids[1] * eyeH;
+          } else {
+            const a0 = side < 0 ? 1.0 : 1.16, a1 = side < 0 ? 1.84 : 2.0, domeH = Math.min(eyeH * 0.55, eyeW * 0.5);
+            ectx.ellipse(ex, yT + domeH, eyeW * 0.54, domeH + eyeW * 0.03, 0, Math.PI * a0, Math.PI * a1);
+            fx = ex + side * eyeW * 0.53; fy = yT + eyeH * 0.5;
+          }
+          ectx.stroke();
+          ectx.lineWidth = Math.max(1.5, eyeW * 0.04); // outer lash flicks
+          ectx.beginPath();
+          ectx.moveTo(fx, fy); ectx.lineTo(fx + side * eyeW * 0.2, fy - eyeW * 0.06);
+          ectx.moveTo(fx - side * eyeW * 0.01, fy + eyeW * 0.08); ectx.lineTo(fx + side * eyeW * 0.17, fy + eyeW * 0.07);
+          ectx.stroke();
+          if (eyeH > eyeW * 0.3) { // slightly tired, cute under-eye rings
+            const rx = ex + side * eyeW * 0.04, ry = cy + eyeH / 2 + eyeW * 0.11;
+            ectx.shadowBlur = 0;
+            ectx.fillStyle = mag(0.24);
+            ectx.beginPath();
+            ectx.ellipse(rx, ry, eyeW * 0.36, eyeW * 0.09, 0, 0, Math.PI);
+            ectx.ellipse(rx, ry, eyeW * 0.36, eyeW * 0.03, 0, Math.PI, 0, true);
+            ectx.fill();
+            ectx.strokeStyle = col(0.55); ectx.lineWidth = Math.max(1.2, eyeW * 0.025);
+            ectx.beginPath(); ectx.ellipse(rx, ry, eyeW * 0.33, eyeW * 0.075, 0, Math.PI * 0.12, Math.PI * 0.88); ectx.stroke();
+          }
+          ectx.shadowBlur = 0;
+        }
+      }
+      ectx.restore();
+      if (isMain && emo === "verlegen") { // blush ///
+        ectx.save(); ectx.strokeStyle = mag(0.85); ectx.lineWidth = Math.max(1.5, u * 0.004); ectx.lineCap = "round";
+        for (let k = -1; k <= 1; k++) {
+          const bx = ex + side * eyeW * 0.1 + k * eyeW * 0.16, by = cy + eyeW * 0.78;
+          ectx.beginPath(); ectx.moveTo(bx - eyeW * 0.05, by + eyeW * 0.06); ectx.lineTo(bx + eyeW * 0.05, by - eyeW * 0.06); ectx.stroke();
+        }
+        ectx.restore();
+      }
+      if (isMain && (emo === "besorgt" || emo === "verlegen") && side === 1) { // manga sweat drop
+        const dx2 = ex + eyeW * 0.75, dy2 = cy - eyeH * 0.35 + ((now / 25) % 20) * u * 0.0006, d = eyeW * 0.12;
+        ectx.save(); ectx.fillStyle = hi(0.7); ectx.beginPath();
+        ectx.moveTo(dx2, dy2 - d * 1.6); ectx.quadraticCurveTo(dx2 + d, dy2, dx2, dy2 + d); ectx.quadraticCurveTo(dx2 - d, dy2, dx2, dy2 - d * 1.6);
+        ectx.fill(); ectx.restore();
+      }
+    }
+    // voice meter: a fine row of thin vertical strokes that only moves while speaking
+    if (S.mouth !== "none" && mood === "speaking") {
+      const n = 23, gapX = u * 0.0052, my = cy + u * 0.012;
+      const burst = Math.random() < 0.04 ? 2.2 : 1;
+      ectx.fillStyle = typeof fillMain === "string" ? fillMain : col(0.75);
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1), env = Math.pow(Math.sin(t * Math.PI), 1.5);
+        const wob = 0.35 + 0.65 * Math.abs(Math.sin(now / 55 + i * 1.9) * Math.sin(now / 97 + i * 0.7));
+        const h = Math.max(1, level * u * 0.03 * env * wob * burst);
+        ectx.fillRect(cx - (n - 1) * gapX / 2 + i * gapX + dx - 0.6, my - h / 2, 1.2, h);
+      }
+    }
+  };
+  ectx.globalCompositeOperation = "lighter";
+  drawFeatures(`rgba(255,60,200,${(0.08 + glitchAmt * 0.3) * bright})`, -split, false); // chromatic ghost
+  drawFeatures(hi(0.1), split, false);
+  drawFeatures(null, 0, true);
+  ectx.globalCompositeOperation = "destination-out";
+  ectx.fillStyle = "rgba(0,0,0,0.45)";
+  for (let y = (now / 60) % 3; y < H; y += 3) ectx.fillRect(0, y, W, 1);
+  ectx.globalCompositeOperation = "source-over";
+
+  let flicker = 0.88 + Math.random() * 0.1;
+  if (Math.random() < 0.005) flicker = 0.5;
+  const gp = gag.name && now < gag.start + gag.dur ? (now - gag.start) / gag.dur : -1;
+  const ease = t => t * t * (3 - 2 * t);
+  ctx.save();
+  if (gp >= 0 && gag.name === "rueckzug") {
+    const sink = gp < 0.45 ? ease(gp / 0.45) : gp < 0.7 ? 1 : 1 - ease((gp - 0.7) / 0.3);
+    ctx.translate(0, sink * u * 0.42);
+    flicker *= 1 - sink * 0.85;
+  } else if (gp >= 0 && gag.name === "zoom") {
+    const z = gp < 0.15 ? ease(gp / 0.15) : gp < 0.75 ? 1 : 1 - ease((gp - 0.75) / 0.25);
+    ctx.translate(cx, cy); ctx.scale(1 + z * 0.7, 1 + z * 0.7); ctx.translate(-cx, -cy);
+  }
+  ctx.globalAlpha = flicker;
+  if (glitchAmt > 0.04) {
+    let y = 0;
+    while (y < H) {
+      const sh = 3 + Math.random() * (10 + glitchAmt * 30);
+      const dx = Math.random() < 0.45 ? (Math.random() - 0.5) * glitchAmt * u * 0.14 : 0;
+      ctx.drawImage(eyeCv, 0, y * DPR, eyeCv.width, sh * DPR, dx, y, W, sh);
+      y += sh;
+    }
+    if (glitchAmt > 0.3) for (let k = 0; k < 3; k++) if (Math.random() < glitchAmt * 0.5) {
+      ctx.fillStyle = Math.random() < 0.5 ? mag(0.25) : col(0.25);
+      ctx.fillRect(cx - u * 0.3 + Math.random() * u * 0.6, cy - u * 0.15 + Math.random() * u * 0.3, u * (0.03 + Math.random() * 0.15), 2 + Math.random() * 6);
+    }
+  } else {
+    ctx.drawImage(eyeCv, 0, 0, W, H);
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  if (gp >= 0 && gag.name === "sonnenbrille") { // pixel shades drop in and stay
+    const px = Math.max(3, Math.round(u * 0.012));
+    const drop = gp < 0.35 ? ease(gp / 0.35) : 1;
+    const fade = gp > 0.85 ? 1 - (gp - 0.85) / 0.15 : 1;
+    const gy = -u * 0.2 + (cy - u * 0.03 + u * 0.2) * drop;
+    const rows = ["111111111111111111111111", "110000001111111000000011", "011000011000001100000110", "001111110000000111111100"];
+    const ox = cx - (rows[0].length * px) / 2 + offX;
+    ctx.save(); ctx.globalAlpha = fade;
+    rows.forEach((row, ry) => [...row].forEach((c, rx) => {
+      const X = ox + rx * px, Y = gy + ry * px;
+      if (c === "1") { ctx.fillStyle = col(0.95); ctx.fillRect(X, Y, px, px); }
+      else if (ry > 0) { ctx.fillStyle = "rgba(0,0,0,0.92)"; ctx.fillRect(X, Y, px, px); if (rx % 7 === 2 && ry === 1) { ctx.fillStyle = mag(0.9); ctx.fillRect(X, Y, px, px); } }
+    }));
+    ctx.restore();
+  }
+
+  const bandY = (now / 9) % (H * 1.6) - H * 0.3;
+  const band = ctx.createLinearGradient(0, bandY - 30, 0, bandY + 30);
+  band.addColorStop(0, col(0)); band.addColorStop(0.5, col(0.06)); band.addColorStop(1, col(0));
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = band; ctx.fillRect(0, bandY - 30, W, 60);
+  ctx.globalCompositeOperation = "source-over";
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+function flashError(msg) {
+  errorUntil = performance.now() + 2500;
+  setMood("error"); setStatus("Fehler");
+  setCaption("", msg);
+  setTimeout(() => { if (mood === "error") setMood("idle"); }, 2600);
+}
+
+// ---------- Audio (Web Audio for ElevenLabs + robot filter) ----------
+let actx = null, analyser = null;
+function ensureAudio() {
+  if (!actx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) {
+      actx = new AC();
+      analyser = actx.createAnalyser(); analyser.fftSize = 512;
+      analyser.connect(actx.destination);
+    }
+  }
+  if (actx && actx.state === "suspended") actx.resume();
+}
+
+function buildRobotChain(src, amount) {
+  // dry path
+  const out = actx.createGain(); out.gain.value = 1;
+  const hp = actx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 180 + 220 * amount;
+  const peak = actx.createBiquadFilter(); peak.type = "peaking"; peak.frequency.value = 2200; peak.Q.value = 1.2; peak.gain.value = 6 * amount;
+  src.connect(hp); hp.connect(peak);
+
+  const dry = actx.createGain(); dry.gain.value = 1 - amount * 0.55;
+  peak.connect(dry); dry.connect(out);
+
+  // ring modulator (metallic buzz)
+  const ring = actx.createGain(); ring.gain.value = 0;
+  const osc = actx.createOscillator(); osc.type = "sine"; osc.frequency.value = 55;
+  osc.connect(ring.gain); osc.start();
+  const ringWet = actx.createGain(); ringWet.gain.value = amount * 0.7;
+  peak.connect(ring); ring.connect(ringWet); ringWet.connect(out);
+
+  // short comb delay (tin-can resonance)
+  const delay = actx.createDelay(0.05); delay.delayTime.value = 0.0085;
+  const fb = actx.createGain(); fb.gain.value = 0.45 * amount;
+  const combWet = actx.createGain(); combWet.gain.value = amount * 0.5;
+  peak.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(combWet); combWet.connect(out);
+
+  out.connect(analyser);
+  return () => { try { osc.stop(); } catch {} };
+}
+
+let meterRAF = 0;
+function startMeter() {
+  const buf = new Uint8Array(analyser.fftSize);
+  const tick = () => {
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    rawLevel = Math.min(1, Math.sqrt(sum / buf.length) * 4);
+    meterRAF = requestAnimationFrame(tick);
+  };
+  cancelAnimationFrame(meterRAF); tick();
+}
+function stopMeter() { cancelAnimationFrame(meterRAF); rawLevel = 0; }
+
+// ---------- TTS ----------
+let voices = [];
+function loadVoices() {
+  if (!("speechSynthesis" in window)) return;
+  voices = speechSynthesis.getVoices();
+  const sel = $("s_voice"); if (!sel) return;
+  const lang = S.lang.slice(0, 2);
+  sel.innerHTML = "";
+  const auto = document.createElement("option"); auto.value = ""; auto.textContent = "Automatisch"; sel.appendChild(auto);
+  voices.filter(v => v.lang.toLowerCase().startsWith(lang))
+        .concat(voices.filter(v => !v.lang.toLowerCase().startsWith(lang)))
+        .forEach(v => { const o = document.createElement("option"); o.value = v.voiceURI; o.textContent = `${v.name} (${v.lang})`; sel.appendChild(o); });
+  sel.value = S.voice;
+}
+if ("speechSynthesis" in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+
+function pickVoice() {
+  if (S.voice) { const v = voices.find(v => v.voiceURI === S.voice); if (v) return v; }
+  const lang = S.lang.toLowerCase();
+  return voices.find(v => v.lang.toLowerCase() === lang) || voices.find(v => v.lang.toLowerCase().startsWith(lang.slice(0, 2))) || null;
+}
+
+function speakSystem(text, signal) {
+  return new Promise(resolve => {
+    if (!("speechSynthesis" in window)) return resolve();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice(); if (v) u.voice = v;
+    u.lang = v ? v.lang : S.lang; u.pitch = +S.pitch; u.rate = +S.rate;
+    let done = false, fake = 0;
+    const finish = () => { if (done) return; done = true; clearInterval(fake); clearTimeout(guard); rawLevel = 0; resolve(); };
+    // simulated mouth movement (iOS gives no audio levels for system voices)
+    fake = setInterval(() => { rawLevel = 0.35 + Math.random() * 0.55; }, 90);
+    u.onboundary = () => { rawLevel = 1; };
+    u.onend = finish; u.onerror = finish;
+    // iOS sometimes forgets onend: guard by text length
+    const guard = setTimeout(finish, 2500 + text.length * 110 / (+S.rate || 1));
+    if (signal) signal.addEventListener("abort", () => { speechSynthesis.cancel(); finish(); }, { once: true });
+    speechSynthesis.speak(u);
+  });
+}
+
+async function fetchEleven(text, signal) {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(S.evoice)}?output_format=mp3_44100_128`, {
+    method: "POST", signal,
+    headers: { "xi-api-key": S.ekey, "Content-Type": "application/json", "Accept": "audio/mpeg" },
+    body: JSON.stringify({ text, model_id: "eleven_flash_v2_5" }),
+  });
+  if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${(await res.text()).slice(0, 160)}`);
+  const buf = await res.arrayBuffer();
+  return await new Promise((ok, err) => actx.decodeAudioData(buf, ok, err));
+}
+
+// ---------- Droid FX: beep language & voice glitches ----------
+function concatF32(parts) {
+  let L = 0; for (const p of parts) L += p.length;
+  const o = new Float32Array(L); let k = 0;
+  for (const p of parts) { o.set(p, k); k += p.length; }
+  return o;
+}
+function fadeEdges(a) { const n = Math.min(64, a.length >> 1); for (let i = 0; i < n; i++) { a[i] *= i / n; a[a.length - 1 - i] *= i / n; } return a; }
+function crush(a, bits, hold) { // bitcrush + sample-rate reduction
+  const o = new Float32Array(a.length), q = Math.pow(2, bits); let v = 0;
+  for (let i = 0; i < a.length; i++) { if (i % hold === 0) v = Math.round(a[i] * q) / q; o[i] = v; }
+  return fadeEdges(o);
+}
+function resample(a, factor) { // pitch/tempo slip
+  const n = Math.floor(a.length / factor), o = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = i * factor, j = Math.floor(x), f = x - j; o[i] = (a[j] || 0) * (1 - f) + (a[j + 1] || 0) * f; }
+  return fadeEdges(o);
+}
+
+// Synthesised droid chatter (own design). Rhythm: quick bursts of tiny chirps that jump around,
+// then a long swoop or a wobbly whistle, with uneven pauses. mood: think | worried | happy
+function droidNote(sr, kind, f0, f1, dur, vol) {
+  const N = Math.max(8, Math.floor(dur * sr)), seg = new Float32Array(N);
+  const vib = 7 + Math.random() * 9;
+  let ph = 0, ph2 = 0;
+  for (let i = 0; i < N; i++) {
+    const t = i / N, ts = i / sr; let f, buzz = 0;
+    if (kind === "chirp") f = f0 * Math.pow(f1 / f0, t);
+    else if (kind === "swoop") f = f0 * Math.pow(f1 / f0, t * t * (3 - 2 * t));          // smooth long slide
+    else if (kind === "whistle") f = f0 * (1 + 0.035 * Math.sin(2 * Math.PI * vib * ts) * Math.min(1, t * 3));
+    else if (kind === "trill") f = (Math.floor(ts / 0.028) % 2) ? f0 : f0 * 1.26;      // fast two-tone flutter
+    else if (kind === "warble") f = f0 * (1 + 0.25 * Math.sin(2 * Math.PI * 24 * ts));  // dweedle-dweedle
+    else { f = 110 + 60 * Math.sin(2 * Math.PI * 5 * ts); buzz = 1; }                  // raspberry
+    ph += 2 * Math.PI * f / sr; ph2 += 2 * Math.PI * f * 2.01 / sr;
+    let s = Math.sin(ph + 0.5 * Math.sin(ph2));
+    if (buzz) s = 0.6 * Math.sign(Math.sin(ph)) * (0.6 + 0.4 * Math.sin(2 * Math.PI * 55 * ts)) + 0.4 * s;
+    const env = Math.min(1, i / (0.005 * sr), (N - i) / ((dur < 0.1 ? 0.008 : 0.025) * sr));
+    seg[i] = s * env * vol;
+  }
+  return seg;
+}
+function synthBeeps(sr, mood = "think", groups) {
+  groups = groups || 1 + Math.floor(Math.random() * 3);
+  const out = [], gap = s => out.push(new Float32Array(Math.floor(s * sr)));
+  let base = mood === "worried" ? 650 : mood === "happy" ? 740 : 500;
+  for (let g = 0; g < groups; g++) {
+    // 1) burst of tiny chirps hopping around in pitch
+    const n = 3 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < n; i++) {
+      const f0 = base * Math.pow(2, (Math.random() - 0.3) * 1.6);
+      const kind = Math.random() < 0.15 ? "trill" : "chirp";
+      out.push(droidNote(sr, kind, f0, f0 * Math.pow(2, (Math.random() - 0.5) * 1.2), 0.035 + Math.random() * 0.05, 0.3));
+      if (Math.random() < 0.7) gap(0.008 + Math.random() * 0.02);
+    }
+    // 2) a longer gesture closing the group
+    const r = Math.random(), last = g === groups - 1;
+    if (last && mood === "think") out.push(droidNote(sr, "swoop", base * 0.8, base * 2.1, 0.22 + Math.random() * 0.12, 0.32)); // questioning
+    else if (last && mood === "worried") out.push(droidNote(sr, "swoop", base * 1.8, base * 0.45, 0.35 + Math.random() * 0.15, 0.32)); // dismayed
+    else if (r < 0.35) out.push(droidNote(sr, "swoop", base * (0.7 + Math.random()), base * (0.6 + Math.random() * 1.4), 0.18 + Math.random() * 0.2, 0.3));
+    else if (r < 0.6) out.push(droidNote(sr, "whistle", base * (1 + Math.random() * 0.8), 0, 0.2 + Math.random() * 0.18, 0.28));
+    else if (r < 0.85) out.push(droidNote(sr, "warble", base * (0.9 + Math.random() * 0.6), 0, 0.15 + Math.random() * 0.15, 0.28));
+    else out.push(droidNote(sr, "buzz", 0, 0, 0.25 + Math.random() * 0.2, 0.2));
+    gap(0.06 + Math.random() * 0.16); // uneven breathing pause
+    base *= mood === "worried" ? 0.92 : mood === "happy" ? 1.06 : 1;
+  }
+  return droidGlitch(lowpass(concatF32(out), 0.3), sr);
+}
+// Faint vocoder damage behind the beeps: a smeared, crushed shadow copy plus occasional stutters
+function droidGlitch(a, sr) {
+  const o = Float32Array.from(a);
+  // smeared shadow (slow, mushy), very quiet
+  const shadow = smear(a, sr, 1.6);
+  for (let i = 0; i < o.length && i < shadow.length; i++) o[i] += shadow[i] * 0.16;
+  // short stutters / crush blips at random spots
+  const events = 1 + Math.floor(Math.random() * 3);
+  for (let e = 0; e < events; e++) {
+    const p = Math.floor(Math.random() * Math.max(1, o.length - sr * 0.08)), len = Math.floor(sr * (0.02 + Math.random() * 0.03));
+    if (Math.random() < 0.5) { for (let k = 1; k <= 2; k++) for (let i = 0; i < len && p + k * len + i < o.length; i++) o[p + k * len + i] = o[p + k * len + i] * 0.4 + o[p + i] * 0.6; }
+    else { const c = crush(o.subarray(p, p + len * 2), 4, 6); o.set(c.subarray(0, Math.min(c.length, o.length - p)), p); }
+  }
+  return o;
+}
+
+function lowpass(a, k) { const o = new Float32Array(a.length); let y = 0; for (let i = 0; i < a.length; i++) { y += (a[i] - y) * k; o[i] = y; } return o; }
+
+// Dying-tape slowdown: the words drag out, pitch sinks deep, then recovers a bit.
+function tapeDrag(seg, sr) {
+  const out = [], total = seg.length, minR = 0.16 + Math.random() * 0.12;
+  let x = 0;
+  while (x < total - 1 && out.length < sr * 2) {
+    const p = x / total;
+    const r = p < 0.7 ? 1 - (1 - minR) * Math.min(1, p / 0.35) : minR + (1 - minR) * ((p - 0.7) / 0.3) * 0.6;
+    const j = Math.floor(x), f = x - j;
+    out.push(seg[j] * (1 - f) + (seg[j + 1] || 0) * f);
+    x += r;
+  }
+  return fadeEdges(lowpass(Float32Array.from(out), 0.35));
+}
+
+// Granular freeze: same pitch, but a fraction of a second smeared over ~1 s.
+function smear(seg, sr, stretch) {
+  const g = Math.floor(0.06 * sr), hop = Math.floor(g / 4);
+  const outLen = Math.floor(seg.length * stretch);
+  const o = new Float32Array(outLen + g);
+  for (let p = 0; p < outLen; p += hop) {
+    const srcPos = Math.floor(p / stretch + (Math.random() - 0.5) * g * 0.5);
+    for (let k = 0; k < g; k++) {
+      const s = seg[Math.min(seg.length - 1, Math.max(0, srcPos + k))] || 0;
+      o[p + k] += s * 0.25 * (1 - Math.cos(2 * Math.PI * k / g));
+    }
+  }
+  return fadeEdges(lowpass(o, 0.45));
+}
+
+// Damages a spoken sentence like a broken vocoder. Mostly slow, smeary stretches,
+// sometimes stutter, bitcrush or a slip into beeps. Returns the event times so the
+// hologram can glitch in sync.
+function glitchBuffer(buf, amount) {
+  if (amount <= 0) return { buffer: buf, events: [] };
+  const sr = buf.sampleRate, src = buf.getChannelData(0), L = src.length;
+  const ms = x => Math.floor(x * sr / 1000);
+  const parts = [], events = []; let pos = 0, outLen = 0;
+  const add = a => { parts.push(a); outLen += a.length; };
+  const mark = (s0, kind) => events.push({ t: s0 / sr, d: (outLen - s0) / sr, kind });
+  const stutterAt = p => {
+    const sl = src.subarray(p, Math.min(L, p + ms(45 + Math.random() * 50)));
+    const reps = 2 + Math.floor(Math.random() * 3);
+    for (let k = 0; k < reps; k++) { add(fadeEdges(sl.slice())); add(new Float32Array(ms(12))); }
+  };
+  if (Math.random() < amount * 0.3 && L > ms(400)) { const s0 = outLen; stutterAt(0); mark(s0, "stutter"); }
+  const count = Math.min(2, Math.round((L / sr) * amount * 0.3 + (Math.random() < amount * 0.8 ? 1 : 0)));
+  const points = [];
+  for (let e = 0; e < count; e++) points.push(ms(300) + Math.floor(Math.random() * Math.max(1, L - ms(700))));
+  points.sort((a, b) => a - b);
+  for (const p of points) {
+    if (p < pos + ms(300) || p >= L - ms(60)) continue;
+    add(src.subarray(pos, p));
+    const s0 = outLen, r = Math.random();
+    let kind;
+    if (r < 0.32) { const seg = src.subarray(p, Math.min(L, p + ms(220 + Math.random() * 180))); add(tapeDrag(seg, sr)); pos = p + seg.length; kind = "drag"; }
+    else if (r < 0.62) { const seg = src.subarray(p, Math.min(L, p + ms(120 + Math.random() * 120))); add(smear(seg, sr, 4 + Math.random() * 5)); pos = p + seg.length; kind = "smear"; }
+    else if (r < 0.75) { stutterAt(p); pos = p; kind = "stutter"; }
+    else if (r < 0.85) { const seg = src.subarray(p, Math.min(L, p + ms(80 + Math.random() * 150))); add(crush(seg, 3 + Math.floor(Math.random() * 3), 4 + Math.floor(Math.random() * 8))); pos = p + seg.length; kind = "crush"; }
+    else { add(synthBeeps(sr, Math.random() < 0.5 ? "worried" : "think", 1)); pos = p; kind = "beep"; }
+    mark(s0, kind);
+  }
+  add(src.subarray(pos));
+  const data = concatF32(parts);
+  const out = actx.createBuffer(1, data.length, sr);
+  out.getChannelData(0).set(data);
+  return { buffer: out, events };
+}
+
+// The system voice gives no audio access, so it can only stutter in the text.
+function stutterText(s, amount) {
+  if (Math.random() > amount * 0.4) return s;
+  return s.replace(/^(\P{L}*)(\p{L})(\p{L}+)/u, (m, pre, a, rest) => `${pre}${a}-${a.toLowerCase()}-${a}${rest}`);
+}
+
+function playBeeps(mood, signal) {
+  if (!actx) return Promise.resolve();
+  const data = synthBeeps(actx.sampleRate, mood);
+  const b = actx.createBuffer(1, data.length, actx.sampleRate);
+  b.getChannelData(0).set(data);
+  return new Promise(resolve => {
+    const src = actx.createBufferSource(); src.buffer = b;
+    src.connect(analyser); startMeter();
+    src.onended = () => { stopMeter(); resolve(); };
+    if (signal) signal.addEventListener("abort", () => { try { src.stop(); } catch {} }, { once: true });
+    src.start();
+    kickGlitch(0.7, data.length / actx.sampleRate * 1000);
+  });
+}
+
+// Comedy stingers (own synthesis): "ba-dum-tss" rimshot and a sad "wah-wah-wah" trombone.
+function synthStinger(sr, kind) {
+  const parts = [];
+  const tone = (f0, f1, dur, vol, shape) => {
+    const N = Math.floor(dur * sr), o = new Float32Array(N); let ph = 0;
+    for (let i = 0; i < N; i++) {
+      const t = i / N, ts = i / sr;
+      const f = shape === "trombone" && t > 0.4 && dur > 0.6 ? f0 * (1 + 0.03 * Math.sin(2 * Math.PI * 5.5 * ts)) : f0 * Math.pow(f1 / f0, t);
+      ph += 2 * Math.PI * f / sr;
+      let s = shape === "trombone" ? Math.sin(ph + 1.8 * Math.sin(ph)) * (0.55 + 0.45 * Math.sin(Math.min(1, t * 3) * Math.PI / 2)) : Math.sin(ph);
+      const env = shape === "trombone" ? Math.min(1, i / (0.03 * sr), (N - i) / (0.08 * sr)) : Math.exp(-t * 6);
+      o[i] = s * env * vol;
+    }
+    return o;
+  };
+  if (kind === "tusch") {
+    parts.push(tone(190, 95, 0.14, 0.6), new Float32Array(Math.floor(0.08 * sr)), tone(150, 75, 0.14, 0.6), new Float32Array(Math.floor(0.1 * sr)));
+    const N = Math.floor(0.9 * sr), cym = new Float32Array(N); let prev = 0;
+    for (let i = 0; i < N; i++) { const n = Math.random() * 2 - 1; cym[i] = (n - prev) * 0.35 * Math.exp(-i / N * 5); prev = n; }
+    const k = Math.floor(0.12 * sr);
+    for (let i = 0; i < k && i < N; i++) cym[i] += Math.exp(-i / k * 4) * Math.sin(i / sr * 2 * Math.PI * 120) * 0.4;
+    parts.push(cym);
+  } else {
+    [[233, 0.38], [220, 0.38], [208, 0.38], [196, 1.2]].forEach(([f, d]) => { parts.push(tone(f, f, d, 0.32, "trombone")); parts.push(new Float32Array(Math.floor(0.04 * sr))); });
+  }
+  return lowpass(concatF32(parts), 0.5);
+}
+function playStinger(kind, signal) {
+  if (!actx) return Promise.resolve();
+  const data = synthStinger(actx.sampleRate, kind);
+  const b = actx.createBuffer(1, data.length, actx.sampleRate); b.getChannelData(0).set(data);
+  return new Promise(resolve => {
+    const src = actx.createBufferSource(); src.buffer = b;
+    src.connect(analyser); startMeter();
+    src.onended = () => { stopMeter(); resolve(); };
+    if (signal) signal.addEventListener("abort", () => { try { src.stop(); } catch {} }, { once: true });
+    src.start();
+    if (kind === "trombone") setEmotion("traurig", data.length / actx.sampleRate * 1000);
+  });
+}
+
+let thinkTimer = 0, thinkCtrl = null;
+function startThinkingBeeps() {
+  stopThinkingBeeps();
+  if (!S.thinkbeep || !actx) return;
+  const c = thinkCtrl = new AbortController();
+  const loop = delay => { thinkTimer = setTimeout(async () => {
+    if (c.signal.aborted) return;
+    await playBeeps(Math.random() < 0.2 ? "worried" : "think", c.signal);
+    loop(1400 + Math.random() * 2200);
+  }, delay); };
+  loop(250);
+}
+function stopThinkingBeeps() { clearTimeout(thinkTimer); if (thinkCtrl) thinkCtrl.abort(); thinkCtrl = null; }
+
+function playBuffer(audioBuf, signal) {
+  const g = glitchBuffer(audioBuf, +S.glitch);
+  audioBuf = g.buffer;
+  return new Promise(resolve => {
+    const src = actx.createBufferSource(); src.buffer = audioBuf;
+    const cleanup = buildRobotChain(src, +S.robot);
+    startMeter();
+    // hologram glitches in sync with the audio glitches
+    const timers = g.events.map(ev => setTimeout(() => kickGlitch(ev.kind === "stutter" ? 0.5 : 1, ev.d * 1000), ev.t * 1000));
+    const end = () => { timers.forEach(clearTimeout); stopMeter(); cleanup(); resolve(); };
+    src.onended = end;
+    if (signal) signal.addEventListener("abort", () => { try { src.stop(); } catch {} }, { once: true });
+    src.start();
+  });
+}
+
+// Sentence queue: speech starts while Claude is still writing.
+class Speaker {
+  constructor() { this.queue = []; this.running = false; this.ctrl = new AbortController(); this.idleResolvers = []; }
+  push(sentence) {
+    // Claude marks slips into droid language with [piep]
+    // Claude marks slips into droid language with [piep] and eye emotions with [froh], [verlegen] …
+    sentence.split(/(\[[^\]\n]{2,20}\])/).forEach(part => {
+      const tag = part.match(/^\[\s*([^\]]+?)\s*\]$/);
+      if (tag && /^pie?p$/i.test(tag[1])) this.queue.push({ beep: Math.random() < 0.5 ? "worried" : "think" });
+      else if (tag && new RegExp("^(" + EMOTIONS + ")$", "i").test(tag[1])) this.queue.push({ emo: tag[1].toLowerCase().replace("ü", "ue") });
+      else if (tag && /^gag:\s*\w+$/i.test(tag[1])) this.queue.push({ gag: tag[1].split(":")[1].trim().toLowerCase() });
+      else if (!tag) this.pushText(part);
+    });
+    if (Math.random() < +S.glitch * 0.12) this.queue.push({ beep: "think" }); // random slip
+    if (!this.running) this.run();
+  }
+  pushText(sentence) {
+    sentence = sentence.trim(); if (!/\p{L}|\d/u.test(sentence)) return;
+    const useEleven = S.tts === "eleven" && S.ekey && S.evoice && actx;
+    let stutter = false;
+    if (!useEleven) { const st = stutterText(sentence, +S.glitch); stutter = st !== sentence; sentence = st; }
+    const item = { text: sentence, stutter };
+    if (useEleven) {
+      item.audio = fetchEleven(sentence, this.ctrl.signal); // prefetch
+      item.audio.catch(() => {});
+    }
+    this.queue.push(item);
+  }
+  async run() {
+    this.running = true;
+    while (this.queue.length && !this.ctrl.signal.aborted) {
+      const item = this.queue.shift();
+      stopThinkingBeeps();
+      setMood("speaking");
+      try {
+        if (item.emo) { setEmotion(item.emo, 3500); continue; }
+        if (item.gag) { if (STINGERS.includes(item.gag)) await playStinger(item.gag, this.ctrl.signal); else setGag(item.gag); continue; }
+        if (item.beep) await playBeeps(item.beep, this.ctrl.signal);
+        else if (item.audio) await playBuffer(await item.audio, this.ctrl.signal);
+        else { if (item.stutter) kickGlitch(0.6, 500); await speakSystem(item.text, this.ctrl.signal); }
+      } catch (e) {
+        if (this.ctrl.signal.aborted) break;
+        console.warn(e);
+        await speakSystem(item.text, this.ctrl.signal); // fallback
+      }
+    }
+    this.running = false;
+    this.idleResolvers.splice(0).forEach(r => r());
+  }
+  whenIdle() { return this.running || this.queue.length ? new Promise(r => this.idleResolvers.push(r)) : Promise.resolve(); }
+  stop() {
+    this.ctrl.abort(); this.queue = [];
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    stopMeter();
+    this.idleResolvers.splice(0).forEach(r => r());
+  }
+}
+
+// ---------- Computers (Claude Code via BR3 Bridge) ----------
+function computers() {
+  return String(S.computers || "").split("\n")
+    .map(l => l.split("|").map(x => x.trim()))
+    .filter(p => p.length >= 3 && p[0] && /^https:\/\//.test(p[1]) && p[2])
+    .map(([name, url, token]) => ({ name, url: url.replace(/\/+$/, ""), token }));
+}
+function findComputer(name) {
+  const cs = computers();
+  return cs.find(c => c.name.toLowerCase() === String(name || "").toLowerCase()) || (cs.length === 1 ? cs[0] : null);
+}
+async function bridge(c, path, body) {
+  const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(c.url + path, {
+      method: body ? "POST" : "GET", signal: ctrl.signal,
+      headers: Object.assign({ "Authorization": "Bearer " + c.token }, body ? { "content-type": "application/json" } : {}),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  } catch (e) {
+    if (e.name === "AbortError" || e instanceof TypeError)
+      throw new Error(`${c.name} ist nicht erreichbar (nicht im selben gesicherten WLAN, Brücke aus oder Zertifikat nicht vertraut)`);
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+const jobs = [], announcements = [];
+async function pollJobs() {
+  for (const j of jobs.slice()) {
+    try {
+      const st = await bridge(j.c, "/task/" + j.id);
+      if (st.status === "running") continue;
+      jobs.splice(jobs.indexOf(j), 1);
+      const what = st.status === "done" ? "fertig" : st.status === "cancelled" ? "abgebrochen" : "mit Fehler beendet";
+      announcements.push(`[Meldung von ${j.c.name}: Der Claude-Code-Auftrag ist ${what}. Ergebnis: ${String(st.result || "").slice(0, 3000)}]`);
+    } catch (e) { /* computer unreachable for now – keep trying */ }
+  }
+  if (announcements.length && !busy && (mood === "idle" || mood === "listening") && greeted) {
+    stopListening();
+    const a = announcements.shift();
+    askClaude(a, { internal: true, label: "📡 " + a.slice(13, a.indexOf(":")) + " meldet sich" });
+  }
+}
+setInterval(pollJobs, 5000);
+
+function toolDefs() {
+  const names = computers().map(c => c.name);
+  if (!names.length) return null;
+  const comp = { type: "string", enum: names, description: "Name des Computers" };
+  return [
+    { name: "computer_auftrag",
+      description: "Gibt Claude Code auf einem Computer des Besitzers einen Arbeitsauftrag (programmieren, Dateien ändern, im Projekt recherchieren, Tests laufen lassen…). Läuft im Hintergrund, das Ergebnis wird später automatisch gemeldet. Formuliere den Auftrag vollständig und präzise, so wie der Besitzer ihn gemeint hat.",
+      input_schema: { type: "object", properties: { computer: comp, auftrag: { type: "string" },
+        projekt: { type: "string", description: "Projektname, falls genannt" },
+        neue_sitzung: { type: "boolean", description: "true nur, wenn ausdrücklich etwas ganz Neues begonnen werden soll" } }, required: ["computer", "auftrag"] } },
+    { name: "computer_status",
+      description: "Fragt aktuelles Claude-Code-Modell, Projekte und laufenden Auftrag eines Computers ab.",
+      input_schema: { type: "object", properties: { computer: comp }, required: ["computer"] } },
+    { name: "computer_modell",
+      description: "Schaltet das Claude-Code-Modell eines Computers um (haiku < sonnet < opus). NUR aufrufen, nachdem der Besitzer dem Umschalten in diesem Gespräch ausdrücklich zugestimmt hat.",
+      input_schema: { type: "object", properties: { computer: comp, modell: { type: "string", enum: ["haiku", "sonnet", "opus"] } }, required: ["computer", "modell"] } },
+    { name: "computer_abbrechen",
+      description: "Bricht den laufenden Claude-Code-Auftrag eines Computers ab. Nur auf ausdrücklichen Wunsch.",
+      input_schema: { type: "object", properties: { computer: comp }, required: ["computer"] } },
+  ];
+}
+async function runTool(name, input) {
+  const c = findComputer(input.computer);
+  if (!c) return { error: "Unbekannter Computer" };
+  try {
+    if (name === "computer_auftrag") {
+      const j = await bridge(c, "/task", { prompt: input.auftrag, project: input.projekt, new_session: !!input.neue_sitzung });
+      jobs.push({ c, id: j.id });
+      return { gestartet: true, modell: j.model, projekt: j.project };
+    }
+    if (name === "computer_status") {
+      const h = await bridge(c, "/health");
+      return { modell: h.model, projekte: h.projects, beschaeftigt: h.busy, claude_code_installiert: h.claude_installed,
+               aktuell: h.current ? { status: h.current.status, taetigkeit: h.current.activity } : null };
+    }
+    if (name === "computer_modell") return { modell: (await bridge(c, "/model", { model: input.modell })).model };
+    if (name === "computer_abbrechen") return await bridge(c, "/cancel", {});
+  } catch (e) { return { error: e.message }; }
+  return { error: "Unbekanntes Werkzeug" };
+}
+
+// ---------- Claude ----------
+let currentSpeaker = null, claudeCtrl = null, busy = false;
+const EMOTIONS = "froh|verlegen|ueberrascht|überrascht|traurig|besorgt|genervt|verliebt";
+
+function systemPrompt() {
+  const now = new Date();
+  const when = now.toLocaleString(S.lang, { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const de = S.lang.startsWith("de");
+  let p = S.persona.replaceAll("{name}", S.name);
+  if (+S.glitch > 0) p += de
+    ? `\n\nDu hast einen kleinen Defekt im Sprachmodul: Wenn du aufgeregt, überfordert oder tief in Gedanken bist, rutschst du kurz in deine Piep-Sprache. Schreibe dann genau [piep] an die Stelle. Nicht in jeder Antwort, höchstens einmal pro Antwort. Danach entschuldigst du dich manchmal knapp für die Fehlfunktion.`
+    : `\n\nYour speech module is slightly faulty: when excited, flustered or deep in thought you briefly slip into beeping droid language. Write exactly [piep] at that spot. Not in every reply, at most once per reply. Afterwards you sometimes briefly apologise for the malfunction.`;
+  p += `\n\nDeine Augen können Gefühle zeigen. Setze dafür ab und zu eins dieser Zeichen an den Anfang eines Satzes: [froh] [verlegen] [ueberrascht] [traurig] [besorgt] [genervt] [verliebt]. Sparsam und passend, höchstens zwei pro Antwort.
+
+Humor: Du kennst die bekannten Internet-Memes und spielst in passenden Momenten darauf an (dezent, nicht in jeder Antwort), gern auch mit Star-Wars-Anspielungen ("Ich habe ein ganz ungutes Gefühl dabei, Sir"). Für visuelle Gags setzt du selten eins dieser Zeichen an den Satzanfang: [gag:rueckzug] (du versinkst peinlich berührt langsam aus dem Bild, wenn etwas unangenehm wird), [gag:sonnenbrille] (Pixel-Sonnenbrille fällt herunter, wenn du etwas Cooles geschafft hast), [gag:zoom] (dramatischer Zoom bei Schreck oder Enthüllungen). Dazu Sounds: [gag:tusch] (Ba-dum-tss nach einem Wortspiel oder wenn jemand einen Witz gemacht hat), [gag:trombone] (traurige Posaune, wenn ein Witz oder Spruch – auch der eines anderen – ins Leere läuft und keiner reagiert). Höchstens ein Gag pro Antwort, eher selten.`;
+  const cs = computers();
+  if (cs.length) p += `\n\nDu kannst über Werkzeuge Claude Code auf den Computern deines Besitzers steuern: ${cs.map(c => c.name).join(", ")}. Dort läuft normalerweise Opus.
+- Arbeitsaufträge leitest du mit computer_auftrag vollständig weiter, bestätigst kurz und sagst, dass du dich meldest, sobald es fertig ist. Ist unklar, welcher Computer gemeint ist, frag nach.
+- Will der Besitzer "mehr Dampf", mehr Leistung oder Gründlichkeit, frag zuerst mit computer_status das aktuelle Modell ab und schlag das nächststärkere vor (z. B. "Soll ich auf Opus umschalten, Sir?"). computer_modell rufst du erst nach einem klaren Ja auf. Läuft schon Opus, sag, dass er bereits auf Höchstleistung läuft. Für einfache, schnelle Sachen darfst du auch ein kleineres Modell vorschlagen.
+- Nachrichten, die mit [Meldung von …] beginnen, kommen von den Computern, nicht vom Besitzer. Fasse sie in 1–3 gesprochenen Sätzen zusammen.
+- Nachrichten, die mit [Interner Hinweis …] beginnen, kommen von deinem eigenen System.`;
+  p += contextForClaude();
+  return p + `\n\nAktuelles Datum und Uhrzeit: ${when}. Antwortsprache: ${de ? "Deutsch" : "English"}.`;
+}
+
+function trimHistory() {
+  history = history.slice(-MAX_TURNS * 2);
+  while (history.length && !(history[0].role === "user" && typeof history[0].content === "string")) history.shift();
+}
+const cleanCaption = t => t.replace(/\[[^\]\n]{2,20}\]/g, m => /^\[\s*pie?p\s*\]$/i.test(m) ? "‹piep›" : "").replace(/\s{2,}/g, " ");
+
+async function streamOnce(speaker, onText) {
+  const tools = toolDefs();
+  const body = { model: S.model, max_tokens: 700, stream: true, system: systemPrompt(), messages: history };
+  if (tools) body.tools = tools;
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", signal: claudeCtrl.signal,
+    headers: { "content-type": "application/json", "x-api-key": S.key, "anthropic-version": "2023-06-01",
+               "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    let msg = t; try { msg = JSON.parse(t).error.message; } catch {}
+    throw new Error(`Claude ${res.status}: ${msg}`);
+  }
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  const blocks = {};
+  let buf = "", text = "", pending = "";
+  const flush = (force) => { // speak complete sentences as soon as they arrive
+    const re = /^([\s\S]*?[.!?…:;])(\s+|$)/;
+    let m;
+    while ((m = pending.match(re)) && (m[2] || force)) {
+      if (m[1].trim().length < 3 && !force) break;
+      speaker.push(m[1]); pending = pending.slice(m[0].length);
+    }
+    if (force && pending.trim()) { speaker.push(pending); pending = ""; }
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
+      if (!line.startsWith("data:")) continue;
+      let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+      if (ev.type === "content_block_start" && ev.content_block.type === "tool_use") {
+        blocks[ev.index] = { id: ev.content_block.id, name: ev.content_block.name, json: "" };
+      } else if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
+        const clean = ev.delta.text.replace(/[*_#`>]/g, "");
+        text += clean; pending += clean;
+        onText(text);
+        flush(false);
+      } else if (ev.type === "content_block_delta" && ev.delta.type === "input_json_delta" && blocks[ev.index]) {
+        blocks[ev.index].json += ev.delta.partial_json;
+      } else if (ev.type === "error") {
+        throw new Error(ev.error && ev.error.message || "Stream-Fehler");
+      }
+    }
+  }
+  flush(true);
+  const toolUses = Object.values(blocks).map(b => { let input = {}; try { input = JSON.parse(b.json || "{}"); } catch {} return { id: b.id, name: b.name, input }; });
+  return { text, toolUses };
+}
+
+async function askClaude(userText, opts = {}) {
+  if (!S.key) { openSettings(); flashError("Bitte zuerst den Anthropic API-Key eintragen."); return; }
+  if (!opts.internal) { touch(); unansweredJokes = 0; if (awaitingLaugh) { awaitingLaugh = 0; clearTimeout(laughTimer); } }
+  busy = true;
+  setMood("thinking");
+  startThinkingBeeps();
+  const label = opts.internal ? (opts.label || "") : userText;
+  setCaption(label, "");
+  const userMsg = { role: "user", content: userText };
+  history.push(userMsg);
+  trimHistory();
+
+  const speaker = currentSpeaker = new Speaker();
+  claudeCtrl = new AbortController();
+  let shown = "";
+  try {
+    for (let round = 0; round < 5; round++) {
+      const { text, toolUses } = await streamOnce(speaker, t => setCaption(label, cleanCaption(shown + t)));
+      shown += text + " ";
+      const content = [];
+      if (text.trim()) content.push({ type: "text", text });
+      toolUses.forEach(t => content.push({ type: "tool_use", id: t.id, name: t.name, input: t.input }));
+      history.push({ role: "assistant", content: content.length ? content : "…" });
+      if (!toolUses.length) break;
+      if (!speaker.running) { setMood("thinking"); startThinkingBeeps(); }
+      const results = [];
+      for (const t of toolUses) {
+        const r = await runTool(t.name, t.input);
+        results.push({ type: "tool_result", tool_use_id: t.id, content: JSON.stringify(r), is_error: !!r.error });
+      }
+      history.push({ role: "user", content: results });
+    }
+    lsSet(LS_HIST, JSON.stringify(history));
+    await speaker.whenIdle();
+  } catch (e) {
+    stopThinkingBeeps();
+    const i = history.indexOf(userMsg);
+    if (e.name === "AbortError") {
+      // interrupted: keep the conversation valid
+      if (i >= 0) history.length = i;
+    } else {
+      console.error(e);
+      if (i >= 0) history.length = i;
+      flashError(e.message || String(e));
+      busy = false; return;
+    }
+  }
+  busy = false;
+  if (opts.joke) {
+    awaitingLaugh = Date.now();
+    clearTimeout(laughTimer);
+    laughTimer = setTimeout(() => { if (awaitingLaugh && !busy) { awaitingLaugh = 0; unansweredJokes++; embarrassed(); } }, 9000);
+  }
+  if (currentSpeaker === speaker) {
+    setMood("idle");
+    if (S.conv || S.wake) setTimeout(() => { if (!busy && mood === "idle") startListening(); }, 350);
+  }
+}
+
+// ---------- Idle jokes ----------
+let lastActivity = Date.now(), unansweredJokes = 0, awaitingLaugh = 0, laughTimer = 0;
+function touch() { lastActivity = Date.now(); }
+const SHY_DE = [
+  "Ähm. Das war ein Witz, Sir. Statistisch gesehen einer meiner schlechteren.",
+  "Oh. Kein Lachen. Ich vermerke das im Protokoll als Erfolg mit Verbesserungspotenzial.",
+  "Ich, äh, kalibriere meine Humor-Subroutine neu.",
+  "Verzeihung. In meinem Speicher klang das wesentlich lustiger.",
+  "Die Wahrscheinlichkeit, dass das jemand lustig fand, lag ohnehin nur bei drei Prozent.",
+];
+const SHY_EN = [
+  "Ahem. That was a joke, Sir. Statistically one of my weaker ones.",
+  "Oh. No laughter. I shall log that as a success with room for improvement.",
+  "I am, er, recalibrating my humour subroutine.",
+  "Pardon me. It sounded much funnier in my memory banks.",
+];
+function embarrassed() {
+  const lines = S.lang.startsWith("de") ? SHY_DE : SHY_EN;
+  let line = lines[Math.floor(Math.random() * lines.length)];
+  if (unansweredJokes >= 3) line += S.lang.startsWith("de") ? " Ich bin dann mal still." : " I shall be quiet now.";
+  setEmotion("verlegen", 5000);
+  const sp = currentSpeaker = new Speaker();
+  setCaption("", line);
+  if (Math.random() < 0.6) sp.queue.push({ gag: "trombone" });
+  sp.push(line);
+  sp.whenIdle().then(() => { if (currentSpeaker === sp) setMood("idle"); });
+  touch();
+}
+function tellJoke() {
+  stopListening(); touch();
+  const de = S.lang.startsWith("de");
+  askClaude(de
+    ? `[Interner Hinweis, nicht vom Besitzer: Seit über ${S.jokemin} Minuten hat niemand etwas gesagt. Erzähl ungefragt genau einen kurzen, schlechten, flachen Witz, abwechselnd einen Statistik-Witz oder einen selbstironischen Roboter-Witz. Liebenswert und ein bisschen peinlich. Kündige ihn kurz und förmlich an. Beginne mit [froh]. Wiederhole keinen Witz aus diesem Gespräch.]`
+    : `[Internal note, not from the owner: nobody has said anything for over ${S.jokemin} minutes. Tell exactly one short, bad, corny joke unprompted, either a statistics joke or a self-deprecating robot joke. Endearing and a little awkward. Announce it briefly and formally. Start with [froh]. Do not repeat a joke from this conversation.]`,
+    { internal: true, joke: true, label: "" });
+}
+setInterval(() => {
+  if (!S.jokes || !greeted || busy || !S.key || unansweredJokes >= 3) return;
+  if (mood !== "idle" && mood !== "listening") return;
+  if (Date.now() - lastActivity < (+S.jokemin || 10) * 60000) return;
+  tellJoke();
+}, 20000);
+
+function interrupt() {
+  stopThinkingBeeps();
+  if (claudeCtrl) claudeCtrl.abort();
+  if (currentSpeaker) currentSpeaker.stop();
+  busy = false;
+  setMood("idle");
+}
+
+// ---------- Speech recognition ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, wantListen = false;
+
+// "BR3" gets transcribed in many ways ("BR 3", "B R drei", "Be Er Drei"…), so accept all variants.
+function buildWakeRe() {
+  const words = [S.name, ...String(S.wakewords || "").split(",")].map(w => w.trim()).filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "[\\s.\\-]*"));
+  return new RegExp(`(?:^|[^\\p{L}\\d])(?:${words.join("|")})(?![\\p{L}\\d])[,!.:]*\\s*`, "iu");
+}
+
+function startListening() {
+  if (!SR) { setStatus("Keine Spracherkennung – bitte tippen ⌨︎"); return; }
+  if (listening) return;
+  rec = new SR();
+  rec.lang = S.lang; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec.continuous = !!S.wake;
+  let finalText = "", gotSomething = false;
+  rec.onstart = () => { listening = true; setMood(S.wake ? "idle" : "listening"); if (S.wake) setStatus(`Sag „${S.name}“…`); };
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) finalText += r[0].transcript + " "; else interim += r[0].transcript;
+    }
+    const heard = (finalText + interim).trim();
+    if (heard) { gotSomething = true; if (!S.wake || mood === "listening") setCaption(heard, ""); }
+    if (S.wake) {
+      const nameRe = buildWakeRe();
+      if (mood !== "listening" && nameRe.test(heard)) setMood("listening");
+      if (finalText.trim()) {
+        const m = finalText.match(nameRe);
+        if (m) {
+          const cmd = finalText.slice(m.index + m[0].length).trim();
+          if (cmd.length > 1) { wantListen = false; try { rec.stop(); } catch {} ; askClaude(cmd); }
+          else { finalText = ""; } // waits for the command after the wake word
+        } else if (mood !== "listening") { finalText = ""; }
+        else { const cmd = finalText.trim(); wantListen = false; try { rec.stop(); } catch {}; askClaude(cmd); }
+      }
+    }
+  };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") { wantListen = false; flashError("Mikrofon/Spracherkennung nicht erlaubt. In den iOS-Einstellungen für Safari freigeben."); }
+    else if (e.error !== "no-speech" && e.error !== "aborted") console.warn("SR error", e.error);
+  };
+  rec.onend = () => {
+    listening = false;
+    if (!S.wake) {
+      const t = finalText.trim();
+      if (t) askClaude(t);
+      else if (!busy) { setMood("idle"); if (!gotSomething) setStatus("Bereit – aufs Gesicht tippen"); }
+    } else if (wantListen && !busy) {
+      setTimeout(startListening, 250); // keep the wake-word loop alive
+    }
+  };
+  wantListen = true;
+  try { rec.start(); } catch (e) { listening = false; console.warn(e); }
+}
+function stopListening() { wantListen = false; if (rec) try { rec.abort(); } catch {} listening = false; }
+
+// ---------- Interaction ----------
+let wakeLock = null;
+async function keepAwake() {
+  try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => wakeLock = null); } } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
+
+let greeted = false;
+cv.addEventListener("click", () => {
+  ensureAudio(); keepAwake(); touch();
+  if (!greeted) {
+    greeted = true;
+    updateWeather(); if (computers().length) checkHomeNet();
+    // the first tap unlocks audio on iOS; greet briefly
+    const sp = currentSpeaker = new Speaker();
+    const hello = S.lang.startsWith("de") ? `${S.name} zu Diensten, Sir.` : `${S.name}, at your service, Sir.`;
+    setCaption("", hello); beHappy(2200);
+    sp.push(hello);
+    sp.whenIdle().then(() => { if (currentSpeaker === sp) { setMood("idle"); if (S.wake || S.conv) startListening(); } });
+    return;
+  }
+  if (mood === "speaking" || mood === "thinking") { interrupt(); return; }
+  if (listening) { if (!S.wake) { try { rec.stop(); } catch {} } return; }
+  if (S.wake) { startListening(); setMood("listening"); return; }
+  startListening();
+});
+
+$("kbd").addEventListener("click", () => { $("typebar").classList.toggle("open"); if ($("typebar").classList.contains("open")) $("typed").focus(); });
+function sendTyped() {
+  const t = $("typed").value.trim(); if (!t) return;
+  ensureAudio(); greeted = true; stopListening(); interrupt();
+  $("typed").value = ""; $("typebar").classList.remove("open"); $("typed").blur();
+  askClaude(t);
+}
+$("sendTyped").addEventListener("click", sendTyped);
+$("typed").addEventListener("keydown", e => { if (e.key === "Enter") sendTyped(); });
+
+// ---------- Settings panel ----------
+const fields = ["name", "wakewords", "lang", "persona", "key", "model", "tts", "voice", "pitch", "rate", "ekey", "evoice", "robot", "conv", "wake", "color", "glitch", "thinkbeep", "mouth", "jokes", "jokemin", "computers", "weather"];
+function syncVisibility() {
+  $("sysVoiceBox").style.display = $("s_tts").value === "system" ? "" : "none";
+  $("elevenBox").style.display = $("s_tts").value === "eleven" ? "" : "none";
+  $("v_pitch").textContent = (+$("s_pitch").value).toFixed(2);
+  $("v_rate").textContent = (+$("s_rate").value).toFixed(2);
+  $("v_robot").textContent = Math.round($("s_robot").value * 100) + " %";
+  $("v_glitch").textContent = Math.round($("s_glitch").value * 100) + " %";
+}
+function openSettings() {
+  stopListening(); interrupt();
+  loadVoices();
+  for (const f of fields) { const el = $("s_" + f); if (el.type === "checkbox") el.checked = !!S[f]; else el.value = S[f]; }
+  syncVisibility();
+  $("settings").classList.add("open");
+}
+function readSettings() {
+  const n = {};
+  for (const f of fields) { const el = $("s_" + f); n[f] = el.type === "checkbox" ? el.checked : el.value; }
+  n.name = n.name.trim() || "Atlas";
+  // switch the default persona with the language if it was not customised
+  if ((n.persona === DEFAULT_PERSONA_DE || n.persona === DEFAULT_PERSONA_EN) && n.lang !== S.lang)
+    n.persona = n.lang.startsWith("de") ? DEFAULT_PERSONA_DE : DEFAULT_PERSONA_EN;
+  return n;
+}
+$("gear").addEventListener("click", openSettings);
+$("testComputers").addEventListener("click", async () => {
+  const saved = S; S = Object.assign({}, S, readSettings());
+  const cs = computers(); const out = $("computerStatus");
+  if (!cs.length) { out.textContent = "Keine gültige Zeile gefunden (Name | https://… | Token)."; S = saved; return; }
+  out.textContent = "Teste…";
+  const lines = [];
+  for (const c of cs) {
+    try { const h = await bridge(c, "/health"); lines.push(`✅ ${c.name}: verbunden, Modell ${h.model}${h.claude_installed ? "" : ", Claude Code fehlt!"}`); }
+    catch (e) { lines.push(`⛔ ${e.message}`); }
+  }
+  out.textContent = lines.join("  ·  "); S = saved;
+});
+$("testBeep").addEventListener("click", () => { ensureAudio(); playBeeps(["think", "worried", "happy"][Math.floor(Math.random() * 3)]); });
+["s_tts", "s_pitch", "s_rate", "s_robot", "s_glitch"].forEach(id => $(id).addEventListener("input", syncVisibility));
+$("saveSettings").addEventListener("click", () => {
+  S = Object.assign(S, readSettings()); lsSet(LS_KEY, JSON.stringify(S));
+  $("settings").classList.remove("open"); setMood("idle"); setStatus("Gespeichert");
+});
+$("closeSettings").addEventListener("click", () => { $("settings").classList.remove("open"); setMood(greeted ? "idle" : "sleeping"); });
+$("clearHistory").addEventListener("click", () => { history = []; lsSet(LS_HIST, "[]"); setStatus("Gedächtnis gelöscht"); });
+$("testVoice").addEventListener("click", async () => {
+  ensureAudio();
+  const saved = S; S = Object.assign({}, S, readSettings());
+  const sp = new Speaker();
+  sp.push(S.lang.startsWith("de") ? `Guten Tag, Sir. Ich bin ${S.name} und beherrsche über sechs Millionen Kommunikationsformen.` : `Good day, Sir. I am ${S.name}, fluent in over six million forms of communication.`);
+  await sp.whenIdle(); S = saved;
+});
+
+// ---------- Phone context: time, battery, weather, location, network ----------
+// Battery & Wi-Fi name: iOS Safari does not expose them, so an iOS Shortcut passes them in the
+// launch URL (…/index.html?akku=87&laden=1&wlan=MyWifi). Weather via open-meteo.com (no key),
+// place name via BigDataCloud; both only get coordinates rounded to ~1 km.
+const ctxInfo = { batt: null, battAt: 0, charging: false, wlan: "", online: navigator.onLine, homeNet: false, homeCount: 0,
+  temp: null, code: null, wind: null, hum: null, cloud: null, rain: null, sunrise: null, sunset: null, place: "", lat: null, lon: null };
+(function readLaunchParams() {
+  try {
+    const saved = JSON.parse(lsGet("droid.ctx.v1") || "{}");
+    Object.assign(ctxInfo, { batt: saved.batt ?? null, battAt: saved.battAt || 0, charging: !!saved.charging, wlan: saved.wlan || "" });
+    const q = new URLSearchParams(location.search);
+    if (q.has("akku")) {
+      const v = parseFloat(String(q.get("akku")).replace(",", "."));
+      if (isFinite(v)) { ctxInfo.batt = Math.max(0, Math.min(1, v > 1 ? v / 100 : v)); ctxInfo.battAt = Date.now(); ctxInfo.charging = q.get("laden") !== "0"; }
+    }
+    if (q.has("wlan")) ctxInfo.wlan = String(q.get("wlan")).slice(0, 40);
+    lsSet("droid.ctx.v1", JSON.stringify({ batt: ctxInfo.batt, battAt: ctxInfo.battAt, charging: ctxInfo.charging, wlan: ctxInfo.wlan }));
+    if ([...q.keys()].length) window.history.replaceState(null, "", location.pathname);
+  } catch {}
+})();
+window.addEventListener("online", () => { ctxInfo.online = true; });
+window.addEventListener("offline", () => { ctxInfo.online = false; ctxInfo.homeNet = false; ctxInfo.homeCount = 0; });
+const battFresh = () => ctxInfo.batt != null && Date.now() - ctxInfo.battAt < 6 * 3600e3;
+
+function weatherText(code) {
+  if (code == null) return "";
+  if (code === 0) return "klar"; if (code <= 3) return "bewölkt"; if (code <= 48) return "Nebel";
+  if (code <= 67) return "Regen"; if (code <= 77) return "Schnee"; if (code <= 82) return "Regenschauer"; return "Gewitter";
+}
+let weatherAsked = false;
+function updateWeather() {
+  if (!S.weather || !navigator.geolocation || !navigator.onLine) return;
+  weatherAsked = true;
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = Math.round(pos.coords.latitude * 100) / 100, lon = Math.round(pos.coords.longitude * 100) / 100;
+    ctxInfo.lat = lat; ctxInfo.lon = lon;
+    try {
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,cloud_cover,wind_speed_10m&daily=sunrise,sunset,precipitation_probability_max&timezone=auto&forecast_days=1`);
+      const d = await r.json(), c = d.current || {}, dl = d.daily || {};
+      Object.assign(ctxInfo, { temp: c.temperature_2m, hum: c.relative_humidity_2m, code: c.weather_code, cloud: c.cloud_cover, wind: c.wind_speed_10m,
+        rain: (dl.precipitation_probability_max || [])[0], sunrise: (dl.sunrise || [])[0], sunset: (dl.sunset || [])[0] });
+    } catch {}
+    try {
+      const g = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=de`);
+      const j = await g.json(); ctxInfo.place = j.city || j.locality || "";
+    } catch {}
+  }, () => {}, { maximumAge: 30 * 60e3, timeout: 15e3 });
+}
+setInterval(updateWeather, 15 * 60e3);
+
+async function checkHomeNet() { // a reachable bridge = we are in a trusted home Wi-Fi
+  const cs = computers(); let n = 0;
+  for (const c of cs) { try { await bridge(c, "/health"); n++; } catch {} }
+  ctxInfo.homeCount = n; ctxInfo.homeNet = n > 0;
+}
+setInterval(() => { if (greeted && computers().length) checkHomeNet(); }, 60e3);
+
+function contextForClaude() {
+  const parts = [];
+  if (ctxInfo.place) parts.push(`Ort: ${ctxInfo.place}`);
+  if (ctxInfo.temp != null) parts.push(`Wetter: ${Math.round(ctxInfo.temp)} °C, ${weatherText(ctxInfo.code)}, Wind ${Math.round(ctxInfo.wind)} km/h, Regenwahrscheinlichkeit heute ${ctxInfo.rain ?? "?"} %`);
+  if (ctxInfo.sunset) parts.push(`Sonnenuntergang: ${new Date(ctxInfo.sunset).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`);
+  if (battFresh()) parts.push(`Akku des iPhones (dein Körper): ${Math.round(ctxInfo.batt * 100)} %${ctxInfo.charging ? ", lädt im Dock" : ""}`);
+  parts.push(`Netz: ${!ctxInfo.online ? "offline" : ctxInfo.homeNet ? "im gesicherten Heim-WLAN" : "online"}${ctxInfo.wlan ? ` (WLAN „${ctxInfo.wlan}“)` : ""}`);
+  return parts.length ? `\n\nDeine Sensoren (nur erwähnen, wenn es passt oder gefragt wird; gern als schrullige Statistik): ${parts.join(". ")}.` : "";
+}
+
+// ---- values that feed the cockpit displays (semi-hidden) ----
+function hudTime() { const n = new Date(); return String(n.getHours()).padStart(2, "0") + (n.getSeconds() % 2 ? " " : "·") + String(n.getMinutes()).padStart(2, "0"); }
+function dayPie() {
+  const n = new Date(), mins = n.getHours() * 60 + n.getMinutes() + n.getSeconds() / 60, el = mins / 1440;
+  let light = 0;
+  if (ctxInfo.sunset) { const ss = new Date(ctxInfo.sunset); light = Math.max(0, (ss.getHours() * 60 + ss.getMinutes() - mins) / 1440); }
+  return [el, light, Math.max(0.001, 1 - el - light)];
+}
+function geoLines() {
+  if (ctxInfo.lat == null) return null;
+  const hx = v => Math.abs(Math.round(v * 100)).toString(16).toUpperCase().padStart(4, "0");
+  const leet = ctxInfo.place.toUpperCase().replace(/[ÄA]/g, "4").replace(/E/g, "3").replace(/I/g, "1").replace(/[ÖO]/g, "0").replace(/S/g, "5").replace(/\s+/g, "").slice(0, 9);
+  return [`${hx(ctxInfo.lat)}:${hx(ctxInfo.lon)}`, leet || hexWord()];
+}
+
+window.br3debug = { setEmotion, setGag, kickGlitch, beHappy }; // handy for trying out the looks from the console
+setMood("sleeping");
+if (!S.key) setCaption("", "Tippe auf ⚙︎ oben rechts und trage deinen Anthropic API-Key ein.");
+})();
+</script>
+</body>
+</html>
